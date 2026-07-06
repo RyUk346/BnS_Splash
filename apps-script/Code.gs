@@ -20,6 +20,7 @@ var HEADERS = [
   "Device MAC",
   "AP MAC",
   "SSID",
+  "Branch",
 ];
 
 function doPost(e) {
@@ -46,6 +47,7 @@ function doPost(e) {
       data.mac || "",
       data.ap || "",
       data.ssid || "",
+      data.branch || "",
     ]);
 
     return ContentService.createTextOutput(

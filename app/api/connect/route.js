@@ -50,7 +50,27 @@ export async function POST(req) {
     return NextResponse.json({ success: false, error: "Birthday must be DD/MM" }, { status: 400 });
   }
 
-  // 1. Save to Google Sheets (non-fatal if it fails — don't strand the guest)
+  // 1. Authorize the guest on UniFi first — this also tells us which
+  //    branch (console) the device is connected to.
+  let authorized = false;
+  let authError = null;
+  let branch = "";
+  if (MAC_RE.test(mac)) {
+    try {
+      const result = await authorizeGuest(mac);
+      authorized = true;
+      branch = result.branch || "";
+    } catch (err) {
+      authError = err;
+      console.error("UniFi authorization failed:", err.message);
+    }
+  } else {
+    // No/invalid MAC — page was likely opened directly (testing), not via
+    // the UniFi redirect. Log the signup but skip authorization.
+    console.warn("No client MAC in request — skipping UniFi authorization");
+  }
+
+  // 2. Save to Google Sheets (non-fatal if it fails — don't strand the guest)
   let savedToSheet = false;
   try {
     savedToSheet = await saveToGoogleSheet({
@@ -62,33 +82,22 @@ export async function POST(req) {
       mac,
       ap,
       ssid,
+      branch,
     });
   } catch (err) {
     console.error("Google Sheets logging failed:", err.message);
   }
 
-  // 2. Authorize the guest on UniFi
-  let authorized = false;
-  if (MAC_RE.test(mac)) {
-    try {
-      await authorizeGuest(mac);
-      authorized = true;
-    } catch (err) {
-      console.error("UniFi authorization failed:", err.message);
-      return NextResponse.json(
-        {
-          success: false,
-          savedToSheet,
-          error: "Could not activate your WiFi access. Please try again.",
-        },
-        { status: 502 }
-      );
-    }
-  } else {
-    // No/invalid MAC — page was likely opened directly (testing), not via
-    // the UniFi redirect. Log the signup but skip authorization.
-    console.warn("No client MAC in request — skipping UniFi authorization");
+  if (authError) {
+    return NextResponse.json(
+      {
+        success: false,
+        savedToSheet,
+        error: "Could not activate your WiFi access. Please try again.",
+      },
+      { status: 502 }
+    );
   }
 
-  return NextResponse.json({ success: true, authorized, savedToSheet });
+  return NextResponse.json({ success: true, authorized, savedToSheet, branch });
 }

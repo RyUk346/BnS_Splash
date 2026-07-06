@@ -1,5 +1,7 @@
 # HyperGlow Guest WiFi Splash Page
 
+> **Taking over this project?** Read [`DOCUMENTATION.md`](DOCUMENTATION.md) — it documents the live deployment, operations runbook, and troubleshooting. This README is the from-scratch setup guide.
+
 A UniFi external captive portal: guests join your WiFi, get redirected to this page on your VPS, fill in a short form, the details land in a Google Sheet, and the guest is authorized onto the internet via the UniFi API.
 
 ```
