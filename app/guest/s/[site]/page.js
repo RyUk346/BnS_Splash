@@ -5,10 +5,8 @@ import SplashForm from "@/components/SplashForm";
 // so this route renders the same splash form as the home page.
 export default function GuestPortal() {
   return (
-    <main className="flex min-h-screen items-center justify-center">
-      <Suspense fallback={null}>
-        <SplashForm />
-      </Suspense>
-    </main>
+    <Suspense fallback={null}>
+      <SplashForm />
+    </Suspense>
   );
 }

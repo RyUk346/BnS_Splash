@@ -22,13 +22,14 @@ export const metadata = {
 export const viewport = {
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
   themeColor: "#000000",
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${oswald.variable} ${inter.variable}`}>
-      <body className="bg-bnspaper text-bnsblack min-h-screen antialiased">
+      <body className="bg-black text-white min-h-screen antialiased">
         {children}
       </body>
     </html>
