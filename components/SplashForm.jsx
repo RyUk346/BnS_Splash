@@ -25,7 +25,6 @@ export default function SplashForm() {
   const mac = params.get("id") || "";
   const ap = params.get("ap") || "";
   const ssid = params.get("ssid") || "";
-  const originalUrl = params.get("url") || "";
 
   const [email, setEmail] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -72,9 +71,11 @@ export default function SplashForm() {
       }
 
       setStatus("success");
-      // Give the network a moment to apply authorization, then move on.
-      const dest =
-        originalUrl || process.env.NEXT_PUBLIC_REDIRECT_URL || "https://burgerandsauce.com";
+      // Give the network a moment to apply authorization, then send the
+      // guest to the brand site. (We deliberately ignore the "original URL"
+      // UniFi passes — on iOS/Android it's just the OS connectivity probe,
+      // e.g. captive.apple.com, not a page the guest actually wanted.)
+      const dest = process.env.NEXT_PUBLIC_REDIRECT_URL || "https://burgerandsauce.com";
       setTimeout(() => (window.location.href = dest), 4000);
     } catch (err) {
       setStatus("error");
