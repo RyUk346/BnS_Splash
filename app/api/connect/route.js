@@ -35,6 +35,8 @@ export async function POST(req) {
   const firstName = (body.firstName || "").trim();
   const phone = (body.phone || "").trim();
   const birthday = (body.birthday || "").trim();
+  // Marketing consent: "Yes" | "No" (anything else is stored blank)
+  const promo = body.promo === "Yes" ? "Yes" : body.promo === "No" ? "No" : "";
   const mac = (body.mac || "").trim();
   const ap = (body.ap || "").trim();
   const ssid = (body.ssid || "").trim();
@@ -79,6 +81,7 @@ export async function POST(req) {
       firstName,
       phone,
       birthday,
+      promo,
       mac,
       ap,
       ssid,

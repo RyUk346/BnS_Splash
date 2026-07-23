@@ -30,6 +30,7 @@ export default function SplashForm() {
   const [firstName, setFirstName] = useState("");
   const [phone, setPhone] = useState("");
   const [birthday, setBirthday] = useState("");
+  const [promo, setPromo] = useState(""); // "Yes" | "No" — no preselection (consent must be a choice)
   const [touched, setTouched] = useState({});
   const [status, setStatus] = useState("idle"); // idle | submitting | success | error
   const [errorMsg, setErrorMsg] = useState("");
@@ -37,7 +38,8 @@ export default function SplashForm() {
   const emailValid = EMAIL_RE.test(email.trim());
   const nameValid = firstName.trim().length > 0;
   const birthdayValid = isValidBirthday(birthday.trim());
-  const canSubmit = emailValid && nameValid && birthdayValid && status !== "submitting";
+  const canSubmit =
+    emailValid && nameValid && birthdayValid && promo !== "" && status !== "submitting";
 
   function handleBirthdayChange(e) {
     let v = e.target.value.replace(/[^\d]/g, "").slice(0, 4);
@@ -60,6 +62,7 @@ export default function SplashForm() {
           firstName: firstName.trim(),
           phone: phone.trim(),
           birthday: birthday.trim(),
+          promo,
           mac,
           ap,
           ssid,
@@ -218,6 +221,39 @@ export default function SplashForm() {
                       <p className="mt-1 text-xs text-red-600">Use DD/MM format, e.g. 24/06.</p>
                     )}
                   </div>
+
+                  {/* Promotional offers consent — compact segmented control */}
+                  <fieldset>
+                    <legend className="bns-heading mb-1.5 block text-sm text-bnsblack">
+                      Promotional Offers <span aria-hidden="true">*</span>
+                    </legend>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { value: "Yes", label: "Yes, send me offers" },
+                        { value: "No", label: "No, pay full price" },
+                      ].map((opt) => (
+                        <label
+                          key={opt.value}
+                          className={`cursor-pointer rounded-lg border px-3 py-3 text-center text-sm font-semibold leading-tight transition ${
+                            promo === opt.value
+                              ? "border-bnsblack bg-bnsblack text-white shadow-sm"
+                              : "border-gray-300 bg-white/80 text-bnsgrey hover:border-bnsblack/50"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="promo"
+                            value={opt.value}
+                            checked={promo === opt.value}
+                            onChange={(e) => setPromo(e.target.value)}
+                            className="sr-only"
+                            required
+                          />
+                          {opt.label}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
 
                   {status === "error" && (
                     <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">

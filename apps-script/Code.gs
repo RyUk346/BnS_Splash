@@ -21,6 +21,7 @@ var HEADERS = [
   "AP MAC",
   "SSID",
   "Branch",
+  "Promo Offers",
 ];
 
 function doPost(e) {
@@ -48,6 +49,7 @@ function doPost(e) {
       data.ap || "",
       data.ssid || "",
       data.branch || "",
+      data.promo || "",
     ]);
 
     return ContentService.createTextOutput(
