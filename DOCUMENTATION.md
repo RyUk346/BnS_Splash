@@ -274,6 +274,44 @@ the store; everything rides Ubiquiti's cloud (`api.ui.com`).
 
 ---
 
+## 9b. Admin dashboard
+
+A password-protected dashboard at **`/SplashPage/BnS/admin`** reads the Google
+Sheet back and presents it as filterable analytics.
+
+**Setup (one-off):**
+
+1. In `apps-script/Code.gs`, set `READ_KEY` to a long random string, then
+   re-deploy the Apps Script (Deploy → Manage deployments → ✏️ → New version).
+2. In `.env` on the VPS add:
+   - `ADMIN_PASSWORD=` a long random password (dashboard login)
+   - `SHEETS_READ_KEY=` the same value as `READ_KEY` above
+3. `npm run build && pm2 restart hyperglow-splash`
+
+**Features:**
+
+- **Store filter** — dropdown of branches (from the Branch column).
+- **Date range** — from/to date pickers plus quick buttons: This month,
+  Last 7/30 days, Today, All time.
+- **Search** — email, name, phone or MAC.
+- **De-duplication** — one row per device per calendar day. Repeat connections
+  that day are merged: earliest connect time, latest disconnect, summed
+  duration, and a `×N` badge showing how many sessions.
+- **Stat cards** — visits, unique customers (distinct emails), average session
+  length, marketing opt-in rate.
+- **Charts** (inline SVG, no chart library): visits per day, visits by store,
+  busiest hour of day.
+- **CSV export** — downloads exactly what's on screen (respects all filters).
+
+**How auth works:** the password is compared in constant time server-side and
+exchanged for an httpOnly cookie valid 12 hours. The Sheets read key never
+reaches the browser — the server proxies the request. Sheet data is cached
+server-side for 60 s (the ↻ Refresh button forces a re-read).
+
+**Note:** the dashboard shows customer PII. Share the password narrowly, and
+prefer rotating it (change `ADMIN_PASSWORD`, restart) over sharing widely —
+changing the password invalidates all existing sessions automatically.
+
 ## 10. Troubleshooting
 
 | Symptom | Diagnosis | Fix |

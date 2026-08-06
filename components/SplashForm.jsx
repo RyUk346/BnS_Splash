@@ -3,19 +3,31 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
+import { EMAIL_RE, normalizeEmail, suggestEmail } from "@/lib/email";
 
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH || "";
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 // Shared input classes (classic theme, semi-transparent on the card)
 const INPUT =
   "w-full rounded-lg border bg-white/80 px-4 py-3 text-bnsblack placeholder-gray-400 outline-none transition focus:border-bnsblack focus:ring-2 focus:ring-bnsblack/20";
 
+// Birthday is DD/MM/YYYY and optional. Validates a real calendar date and a
+// sane year range (no future dates, nobody older than ~120).
 function isValidBirthday(value) {
   if (!value) return true; // optional field
-  const m = value.match(/^(\d{2})\/(\d{2})$/);
+  const m = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!m) return false;
-  return Number(m[1]) >= 1 && Number(m[1]) <= 31 && Number(m[2]) >= 1 && Number(m[2]) <= 12;
+  const day = Number(m[1]);
+  const month = Number(m[2]);
+  const year = Number(m[3]);
+
+  const thisYear = new Date().getFullYear();
+  if (year < thisYear - 120 || year > thisYear) return false;
+  if (month < 1 || month > 12) return false;
+
+  // Days in the given month (handles leap years).
+  const daysInMonth = new Date(year, month, 0).getDate();
+  return day >= 1 && day <= daysInMonth;
 }
 
 export default function SplashForm() {
@@ -34,16 +46,44 @@ export default function SplashForm() {
   const [touched, setTouched] = useState({});
   const [status, setStatus] = useState("idle"); // idle | submitting | success | error
   const [errorMsg, setErrorMsg] = useState("");
+  const [emailSuggestion, setEmailSuggestion] = useState(""); // "did you mean …"
+  const [emailError, setEmailError] = useState(""); // server-side reject message
 
-  const emailValid = EMAIL_RE.test(email.trim());
+  const emailValid = EMAIL_RE.test(normalizeEmail(email));
   const nameValid = firstName.trim().length > 0;
   const birthdayValid = isValidBirthday(birthday.trim());
   const canSubmit =
-    emailValid && nameValid && birthdayValid && promo !== "" && status !== "submitting";
+    emailValid &&
+    !emailSuggestion && // an unresolved typo suggestion blocks submit
+    !emailError &&
+    nameValid &&
+    birthdayValid &&
+    promo !== "" &&
+    status !== "submitting";
 
+  function handleEmailChange(e) {
+    const v = e.target.value;
+    setEmail(v);
+    setEmailError("");
+    // Live typo hint (client-side, instant — never auto-applied).
+    setEmailSuggestion(EMAIL_RE.test(normalizeEmail(v)) ? suggestEmail(v) || "" : "");
+  }
+
+  function applySuggestion() {
+    setEmail(emailSuggestion);
+    setEmailSuggestion("");
+    setEmailError("");
+  }
+
+  // Auto-format as the guest types: DDMMYYYY -> DD/MM/YYYY
   function handleBirthdayChange(e) {
-    let v = e.target.value.replace(/[^\d]/g, "").slice(0, 4);
-    if (v.length >= 3) v = v.slice(0, 2) + "/" + v.slice(2);
+    const digits = e.target.value.replace(/[^\d]/g, "").slice(0, 8);
+    let v = digits;
+    if (digits.length > 4) {
+      v = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+    } else if (digits.length > 2) {
+      v = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    }
     setBirthday(v);
   }
 
@@ -52,13 +92,35 @@ export default function SplashForm() {
     if (!canSubmit) return;
     setStatus("submitting");
     setErrorMsg("");
+    setEmailError("");
 
+    const cleanEmail = normalizeEmail(email);
+
+    // Step 1: deeper email validation (MX + disposable) on the server.
+    try {
+      const vr = await fetch(`${BASE}/api/validate-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: cleanEmail }),
+      });
+      const vd = await vr.json();
+      if (!vd.valid) {
+        setStatus("idle");
+        setEmailError(vd.message || "Please enter a valid email address.");
+        if (vd.suggestion) setEmailSuggestion(vd.suggestion);
+        return; // block connect until the email passes
+      }
+    } catch {
+      // Validation endpoint unreachable → fail open, don't strand the guest.
+    }
+
+    // Step 2: existing connect + Sheets flow.
     try {
       const res = await fetch(`${BASE}/api/connect`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: email.trim(),
+          email: cleanEmail,
           firstName: firstName.trim(),
           phone: phone.trim(),
           birthday: birthday.trim(),
@@ -153,13 +215,31 @@ export default function SplashForm() {
                       autoComplete="email"
                       placeholder="you@example.com"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={handleEmailChange}
                       onBlur={() => setTouched((s) => ({ ...s, email: true }))}
-                      className={`${INPUT} ${touched.email && !emailValid ? "border-red-500" : "border-gray-300"}`}
+                      className={`${INPUT} ${
+                        (touched.email && !emailValid) || emailError ? "border-red-500" : "border-gray-300"
+                      }`}
                       required
                     />
                     {touched.email && !emailValid && (
                       <p className="mt-1 text-xs text-red-600">Please enter a valid email address.</p>
+                    )}
+                    {emailError && (
+                      <p className="mt-1 text-xs text-red-600">{emailError}</p>
+                    )}
+                    {emailSuggestion && (
+                      <p className="mt-1 text-xs text-bnsblack">
+                        Did you mean{" "}
+                        <button
+                          type="button"
+                          onClick={applySuggestion}
+                          className="font-semibold underline"
+                        >
+                          {emailSuggestion}
+                        </button>
+                        ?
+                      </p>
                     )}
                   </div>
 
@@ -204,21 +284,23 @@ export default function SplashForm() {
                   {/* Birthday */}
                   <div>
                     <label htmlFor="birthday" className="bns-heading mb-1.5 block text-sm text-bnsblack">
-                      Birthday <span className="font-normal normal-case text-bnsgrey">(DD/MM)</span>
+                      Birthday <span className="font-normal normal-case text-bnsgrey">(DD/MM/YYYY)</span>
                     </label>
                     <input
                       id="birthday"
                       type="text"
                       inputMode="numeric"
-                      placeholder="24/06"
+                      placeholder="24/06/1995"
                       value={birthday}
                       onChange={handleBirthdayChange}
                       onBlur={() => setTouched((s) => ({ ...s, birthday: true }))}
                       className={`${INPUT} ${touched.birthday && !birthdayValid ? "border-red-500" : "border-gray-300"}`}
-                      maxLength={5}
+                      maxLength={10}
                     />
                     {touched.birthday && !birthdayValid && (
-                      <p className="mt-1 text-xs text-red-600">Use DD/MM format, e.g. 24/06.</p>
+                      <p className="mt-1 text-xs text-red-600">
+                        Use DD/MM/YYYY format, e.g. 24/06/1995.
+                      </p>
                     )}
                   </div>
 
@@ -231,27 +313,40 @@ export default function SplashForm() {
                       {[
                         { value: "Yes", label: "Yes, send me offers" },
                         { value: "No", label: "No, pay full price" },
-                      ].map((opt) => (
-                        <label
-                          key={opt.value}
-                          className={`cursor-pointer rounded-lg border px-3 py-3 text-center text-sm font-semibold leading-tight transition ${
-                            promo === opt.value
-                              ? "border-bnsblack bg-bnsblack text-white shadow-sm"
-                              : "border-gray-300 bg-white/80 text-bnsgrey hover:border-bnsblack/50"
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name="promo"
-                            value={opt.value}
-                            checked={promo === opt.value}
-                            onChange={(e) => setPromo(e.target.value)}
-                            className="sr-only"
-                            required
-                          />
-                          {opt.label}
-                        </label>
-                      ))}
+                      ].map((opt) => {
+                        const selected = promo === opt.value;
+                        return (
+                          <label
+                            key={opt.value}
+                            className={`flex cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-2 py-2.5 text-[11px] font-semibold leading-tight transition xs:text-xs sm:gap-2 sm:px-3 sm:text-sm ${
+                              selected
+                                ? "border-bnsblack bg-bnsblack/5 text-bnsblack shadow-sm"
+                                : "border-gray-300 bg-white/80 text-bnsgrey hover:border-bnsblack/50"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="promo"
+                              value={opt.value}
+                              checked={selected}
+                              onChange={(e) => setPromo(e.target.value)}
+                              className="sr-only"
+                              required
+                            />
+                            {/* Visible radio indicator */}
+                            <span
+                              className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border-2 sm:h-4 sm:w-4 ${
+                                selected ? "border-bnsblack" : "border-gray-400"
+                              }`}
+                            >
+                              {selected && (
+                                <span className="h-1.5 w-1.5 rounded-full bg-bnsblack sm:h-2 sm:w-2" />
+                              )}
+                            </span>
+                            {opt.label}
+                          </label>
+                        );
+                      })}
                     </div>
                   </fieldset>
 

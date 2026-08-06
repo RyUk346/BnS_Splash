@@ -13,5 +13,17 @@ module.exports = {
         NODE_ENV: "production",
       },
     },
+    {
+      // Session-duration poller. Runs on a cron schedule (every 3 min),
+      // exits each run, and is restarted by pm2 at the next tick.
+      name: "hyperglow-poller",
+      script: "scripts/session-poller.js",
+      cwd: __dirname,
+      cron_restart: "*/3 * * * *",
+      autorestart: false, // it's a one-shot; cron re-launches it
+      env: {
+        NODE_ENV: "production",
+      },
+    },
   ],
 };

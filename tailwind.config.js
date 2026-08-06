@@ -6,6 +6,10 @@ module.exports = {
   ],
   theme: {
     extend: {
+      screens: {
+        // Extra-small breakpoint for narrow phones / captive-portal popups
+        xs: "380px",
+      },
       colors: {
         // Burger & Sauce palette: bold black & white, warm paper background
         bnsblack: "#0a0a0a",

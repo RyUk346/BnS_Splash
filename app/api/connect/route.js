@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { authorizeGuest } from "@/lib/unifi";
+import { EMAIL_RE, normalizeEmail } from "@/lib/email";
+import { recordSession } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const MAC_RE = /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/i;
 
 async function saveToGoogleSheet(entry) {
@@ -31,7 +32,7 @@ export async function POST(req) {
     return NextResponse.json({ success: false, error: "Invalid request" }, { status: 400 });
   }
 
-  const email = (body.email || "").trim();
+  const email = normalizeEmail(body.email);
   const firstName = (body.firstName || "").trim();
   const phone = (body.phone || "").trim();
   const birthday = (body.birthday || "").trim();
@@ -48,20 +49,29 @@ export async function POST(req) {
   if (!firstName) {
     return NextResponse.json({ success: false, error: "First name is required" }, { status: 400 });
   }
-  if (birthday && !/^\d{2}\/\d{2}$/.test(birthday)) {
-    return NextResponse.json({ success: false, error: "Birthday must be DD/MM" }, { status: 400 });
+  if (birthday && !/^\d{2}\/\d{2}\/\d{4}$/.test(birthday)) {
+    return NextResponse.json(
+      { success: false, error: "Birthday must be DD/MM/YYYY" },
+      { status: 400 }
+    );
   }
+
+  // Shared timestamp — written to the Sheet AND used as the row key so the
+  // poller can find this exact row later to fill in disconnect + duration.
+  const timestamp = new Date().toISOString();
 
   // 1. Authorize the guest on UniFi first — this also tells us which
   //    branch (console) the device is connected to.
   let authorized = false;
   let authError = null;
   let branch = "";
+  let consoleId = "";
   if (MAC_RE.test(mac)) {
     try {
       const result = await authorizeGuest(mac);
       authorized = true;
       branch = result.branch || "";
+      consoleId = result.consoleId || "";
     } catch (err) {
       authError = err;
       console.error("UniFi authorization failed:", err.message);
@@ -76,7 +86,7 @@ export async function POST(req) {
   let savedToSheet = false;
   try {
     savedToSheet = await saveToGoogleSheet({
-      timestamp: new Date().toISOString(),
+      timestamp,
       email,
       firstName,
       phone,
@@ -89,6 +99,24 @@ export async function POST(req) {
     });
   } catch (err) {
     console.error("Google Sheets logging failed:", err.message);
+  }
+
+  // 3. Register the session so the poller can track connection duration.
+  //    Keyed by timestamp + mac, which uniquely identifies the Sheet row.
+  if (authorized && MAC_RE.test(mac)) {
+    try {
+      recordSession({
+        timestamp, // Sheet row key (col A)
+        mac: mac.toLowerCase(),
+        consoleId,
+        branch,
+        connectedAt: timestamp,
+        lastSeen: timestamp,
+        status: "active",
+      });
+    } catch (err) {
+      console.error("Session record failed:", err.message);
+    }
   }
 
   if (authError) {
