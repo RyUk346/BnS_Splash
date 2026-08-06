@@ -6,5 +6,6 @@ out/
 npm-debug.log*
 .DS_Store
 
-# Session poller runtime state
-data/
+# Session poller runtime state (leading slash = repo root ONLY, so it
+# doesn't also ignore app/api/admin/data/)
+/data/
