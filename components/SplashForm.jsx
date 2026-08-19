@@ -141,7 +141,7 @@ export default function SplashForm() {
       // UniFi passes — on iOS/Android it's just the OS connectivity probe,
       // e.g. captive.apple.com, not a page the guest actually wanted.)
       const dest = process.env.NEXT_PUBLIC_REDIRECT_URL || "https://burgerandsauce.com";
-      setTimeout(() => (window.location.href = dest), 4000);
+      setTimeout(() => (window.location.href = dest), 500);
     } catch (err) {
       setStatus("error");
       setErrorMsg(err.message || "Connection failed. Please try again.");
