@@ -13,6 +13,37 @@ const INPUT =
 
 // Birthday is DD/MM/YYYY and optional. Validates a real calendar date and a
 // sane year range (no future dates, nobody older than ~120).
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Poll until the gateway confirms this device is authorized (i.e. the WiFi
+ * really is connected), then resolve. Gives up after ~12s and resolves
+ * anyway — a guest must never be trapped on the form by a slow API.
+ */
+async function waitUntilOnline(mac) {
+  if (!mac) {
+    await sleep(800); // no MAC (direct page open) — brief pause, then go
+    return;
+  }
+  const deadline = Date.now() + 12000;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(
+        `${BASE}/api/connection-status?mac=${encodeURIComponent(mac)}`,
+        { cache: "no-store" }
+      );
+      const data = await res.json();
+      if (data.authorized === true) return; // network is open — go now
+      if (data.authorized === null) break; // can't tell; stop polling
+    } catch {
+      break; // network/API problem — don't keep the guest waiting
+    }
+    await sleep(1200);
+  }
+  // Fallback: give the gateway a moment, then proceed regardless.
+  await sleep(800);
+}
+
 function isValidBirthday(value) {
   if (!value) return true; // optional field
   const m = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
@@ -135,13 +166,15 @@ export default function SplashForm() {
         throw new Error(data.error || "Something went wrong. Please try again.");
       }
 
-      setStatus("success");
-      // Give the network a moment to apply authorization, then send the
-      // guest to the brand site. (We deliberately ignore the "original URL"
-      // UniFi passes — on iOS/Android it's just the OS connectivity probe,
-      // e.g. captive.apple.com, not a page the guest actually wanted.)
+      // No success screen. Wait until the network is genuinely open for this
+      // device, then send the guest to the brand site. We ask our server
+      // (which asks UniFi) rather than guessing with a fixed delay, so the
+      // redirect never lands on a "no internet" error page.
+      // (We ignore the "original URL" UniFi passes — on iOS/Android it's just
+      // the OS connectivity probe, e.g. captive.apple.com.)
       const dest = process.env.NEXT_PUBLIC_REDIRECT_URL || "https://burgerandsauce.com";
-      setTimeout(() => (window.location.href = dest), 500);
+      await waitUntilOnline(mac);
+      window.location.href = dest;
     } catch (err) {
       setStatus("error");
       setErrorMsg(err.message || "Connection failed. Please try again.");
@@ -161,32 +194,7 @@ export default function SplashForm() {
       <div className="relative z-10 w-full max-w-md px-4 py-8">
         {/* Semi-transparent white card */}
         <div className="overflow-hidden rounded-2xl border border-white/40 bg-white/65 shadow-card backdrop-blur-md">
-          {status === "success" ? (
-            <>
-              <div className="flex justify-center px-6 pt-9">
-                <Image
-                  src={`${BASE}/bns-logo.png`}
-                  alt="Burger & Sauce"
-                  width={320}
-                  height={72}
-                  priority
-                  className="h-10 w-auto"
-                />
-              </div>
-              <div className="px-6 py-10 text-center">
-                <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-bnsblack">
-                  <svg className="h-10 w-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <h1 className="bns-heading mb-3 text-3xl text-bnsblack">You&apos;re connected!</h1>
-                <p className="text-bnsgrey">
-                  Enjoy your free WiFi. You&apos;ll be redirected in a few seconds&hellip;
-                </p>
-              </div>
-            </>
-          ) : (
-            <>
+          <>
               {/* Brand header */}
               <div className="flex flex-col items-center gap-2 px-6 pb-2 pt-6">
                 <Image
@@ -377,8 +385,7 @@ export default function SplashForm() {
                   </a>
                 </p>
               </div>
-            </>
-          )}
+          </>
         </div>
       </div>
     </div>
