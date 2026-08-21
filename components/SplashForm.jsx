@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { EMAIL_RE, normalizeEmail, suggestEmail } from "@/lib/email";
@@ -79,6 +79,19 @@ export default function SplashForm() {
   const [errorMsg, setErrorMsg] = useState("");
   const [emailSuggestion, setEmailSuggestion] = useState(""); // "did you mean …"
   const [emailError, setEmailError] = useState(""); // server-side reject message
+
+  // Captive-portal browsers (iOS Captive Network Assistant, Android's login
+  // WebView) run their own autofocus heuristic on load, which typically picks
+  // the first plain type="text" input — i.e. First Name, skipping our
+  // type="email" field. Claim focus for Email ourselves, and re-assert it a
+  // moment later in case the WebView grabs it back after first paint.
+  const emailRef = useRef(null);
+  useEffect(() => {
+    const focusEmail = () => emailRef.current?.focus({ preventScroll: true });
+    focusEmail();
+    const t = setTimeout(focusEmail, 350);
+    return () => clearTimeout(t);
+  }, []);
 
   const emailValid = EMAIL_RE.test(normalizeEmail(email));
   const nameValid = firstName.trim().length > 0;
@@ -218,6 +231,7 @@ export default function SplashForm() {
                     </label>
                     <input
                       id="email"
+                      ref={emailRef}
                       type="email"
                       inputMode="email"
                       autoComplete="email"
