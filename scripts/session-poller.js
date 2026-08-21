@@ -40,10 +40,13 @@ async function updateSheetRow(session, disconnectedAt, durationLabel) {
     console.warn("[poller] GOOGLE_SHEETS_WEBHOOK_URL not set — cannot update row");
     return false;
   }
+  // See the note in app/api/connect/route.js: Apps Script runs the script
+  // and then 302s to its output URL, which often 404s on the follow-up hop
+  // even though the write succeeded. Don't follow it.
   const res = await fetch(WEBHOOK, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    redirect: "follow",
+    redirect: "manual",
     body: JSON.stringify({
       action: "updateDuration",
       timestamp: session.timestamp, // row key (col A)
@@ -52,8 +55,8 @@ async function updateSheetRow(session, disconnectedAt, durationLabel) {
       duration: durationLabel,
     }),
   });
-  if (!res.ok) throw new Error(`Sheets update HTTP ${res.status}`);
-  return true;
+  if (res.status >= 200 && res.status < 400) return true;
+  throw new Error(`Sheets update HTTP ${res.status}`);
 }
 
 async function run() {

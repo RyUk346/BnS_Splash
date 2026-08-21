@@ -13,15 +13,22 @@ async function saveToGoogleSheet(entry) {
     console.warn("GOOGLE_SHEETS_WEBHOOK_URL not set — skipping sheet logging");
     return false;
   }
+  // Apps Script runs doPost (appending the row) and THEN answers with a 302
+  // pointing at script.googleusercontent.com for the JSON reply. Following
+  // that hop often fails with a Google "Page not found" page even though the
+  // row was written — which used to surface as a bogus "HTTP 404" error.
+  // So: don't follow the redirect. Reaching the 302 means the script ran.
   const res = await fetch(webhook, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(entry),
-    // Apps Script replies with a redirect; follow it.
-    redirect: "follow",
+    redirect: "manual",
   });
-  if (!res.ok) throw new Error(`Sheets webhook returned HTTP ${res.status}`);
-  return true;
+
+  // 2xx = direct reply, 3xx = script ran and is redirecting to its output.
+  if (res.status >= 200 && res.status < 400) return true;
+
+  throw new Error(`Sheets webhook returned HTTP ${res.status}`);
 }
 
 export async function POST(req) {
