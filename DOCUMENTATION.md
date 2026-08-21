@@ -5,6 +5,9 @@
 **First deployed:** July 2026 — Burger & Sauce store
 **Audience:** developers / IT staff taking over maintenance of this system
 
+> **Adding another store/router?** See [`ADDING-A-STORE.md`](ADDING-A-STORE.md)
+> — a 15-minute checklist, no code changes needed.
+
 ---
 
 ## 1. What this project does
