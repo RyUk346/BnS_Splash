@@ -82,14 +82,15 @@ export default function SplashForm() {
 
   // Captive-portal browsers (iOS Captive Network Assistant, Android's login
   // WebView) run their own autofocus heuristic on load, which typically picks
-  // the first plain type="text" input — i.e. First Name, skipping our
-  // type="email" field. Claim focus for Email ourselves, and re-assert it a
-  // moment later in case the WebView grabs it back after first paint.
-  const emailRef = useRef(null);
+  // the first plain type="text" input. Name is now that field AND the first
+  // field on the form, so their choice and ours agree — no fighting over it.
+  // We still claim focus explicitly (and re-assert after first paint) so the
+  // behaviour is the same everywhere.
+  const nameRef = useRef(null);
   useEffect(() => {
-    const focusEmail = () => emailRef.current?.focus({ preventScroll: true });
-    focusEmail();
-    const t = setTimeout(focusEmail, 350);
+    const focusName = () => nameRef.current?.focus({ preventScroll: true });
+    focusName();
+    const t = setTimeout(focusName, 350);
     return () => clearTimeout(t);
   }, []);
 
@@ -224,6 +225,29 @@ export default function SplashForm() {
 
               <div className="-mt-2 px-6 py-4">
                 <form onSubmit={handleSubmit} noValidate className="space-y-4">
+                  {/* Name — first field, so the captive browser's autofocus
+                      heuristic and ours agree on the same input */}
+                  <div>
+                    <label htmlFor="name" className="bns-heading mb-1.5 block text-sm text-bnsblack">
+                      Name <span aria-hidden="true">*</span>
+                    </label>
+                    <input
+                      id="name"
+                      ref={nameRef}
+                      type="text"
+                      autoComplete="name"
+                      placeholder="Alex Smith"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      onBlur={() => setTouched((s) => ({ ...s, firstName: true }))}
+                      className={`${INPUT} ${touched.firstName && !nameValid ? "border-red-500" : "border-gray-300"}`}
+                      required
+                    />
+                    {touched.firstName && !nameValid && (
+                      <p className="mt-1 text-xs text-red-600">Name is required.</p>
+                    )}
+                  </div>
+
                   {/* Email */}
                   <div>
                     <label htmlFor="email" className="bns-heading mb-1.5 block text-sm text-bnsblack">
@@ -231,7 +255,6 @@ export default function SplashForm() {
                     </label>
                     <input
                       id="email"
-                      ref={emailRef}
                       type="email"
                       inputMode="email"
                       autoComplete="email"
@@ -262,27 +285,6 @@ export default function SplashForm() {
                         </button>
                         ?
                       </p>
-                    )}
-                  </div>
-
-                  {/* First Name */}
-                  <div>
-                    <label htmlFor="firstName" className="bns-heading mb-1.5 block text-sm text-bnsblack">
-                      First Name <span aria-hidden="true">*</span>
-                    </label>
-                    <input
-                      id="firstName"
-                      type="text"
-                      autoComplete="given-name"
-                      placeholder="Alex"
-                      value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
-                      onBlur={() => setTouched((s) => ({ ...s, firstName: true }))}
-                      className={`${INPUT} ${touched.firstName && !nameValid ? "border-red-500" : "border-gray-300"}`}
-                      required
-                    />
-                    {touched.firstName && !nameValid && (
-                      <p className="mt-1 text-xs text-red-600">First name is required.</p>
                     )}
                   </div>
 
