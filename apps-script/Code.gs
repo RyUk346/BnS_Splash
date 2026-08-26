@@ -37,6 +37,8 @@ var COL_TIMESTAMP = 1; // A
 var COL_MAC = 6;       // F
 var COL_DISCONNECTED = 11; // K
 var COL_DURATION = 12;     // L
+var COL_DEVICE_NAME = 13;  // M
+var COL_VENDOR = 14;       // N
 
 function doPost(e) {
   try {
@@ -100,6 +102,12 @@ function handleUpdate(sheet, data) {
       var rowNumber = i + 2; // account for header + 0-index
       sheet.getRange(rowNumber, COL_DISCONNECTED).setValue(data.disconnectedAt || "");
       sheet.getRange(rowNumber, COL_DURATION).setValue(data.duration || "");
+
+      // Device name / vendor arrive late (UniFi fingerprints a device a few
+      // minutes after it joins), so fill them in if we now have better data.
+      if (data.deviceName) sheet.getRange(rowNumber, COL_DEVICE_NAME).setValue(data.deviceName);
+      if (data.vendor) sheet.getRange(rowNumber, COL_VENDOR).setValue(data.vendor);
+
       return json({ success: true, updatedRow: rowNumber });
     }
   }

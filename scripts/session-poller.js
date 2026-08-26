@@ -22,7 +22,7 @@ try {
   /* dotenv optional — pm2 injects env in production */
 }
 
-const { getConnectedMacs, getConsoles } = require("../lib/unifi");
+const { getConnectedMacs, getConsoles, getClientInfo } = require("../lib/unifi");
 const { drainInbox, loadState, saveState } = require("../lib/sessions");
 
 const GRACE_MS = parseInt(process.env.SESSION_GRACE_MINUTES || "10", 10) * 60 * 1000;
@@ -35,7 +35,7 @@ function fmtDuration(ms) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-async function updateSheetRow(session, disconnectedAt, durationLabel) {
+async function updateSheetRow(session, disconnectedAt, durationLabel, extra = {}) {
   if (!WEBHOOK) {
     console.warn("[poller] GOOGLE_SHEETS_WEBHOOK_URL not set — cannot update row");
     return false;
@@ -53,6 +53,7 @@ async function updateSheetRow(session, disconnectedAt, durationLabel) {
       mac: session.mac, // row key (col F)
       disconnectedAt,
       duration: durationLabel,
+      ...extra, // deviceName / vendor, once UniFi has fingerprinted the device
     }),
   });
   if (res.status >= 200 && res.status < 400) return true;
@@ -97,6 +98,20 @@ async function run() {
 
     if (present.has(s.mac)) {
       s.lastSeen = new Date(now).toISOString();
+
+      // While the device is still connected, try to pick up the name and
+      // vendor UniFi has worked out for it. Fingerprinting takes a minute or
+      // two, so this usually succeeds on a later cycle than the first.
+      if (!s.deviceName || !s.vendor) {
+        try {
+          const info = await getClientInfo(s.consoleId, s.mac);
+          const isMac = /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/i.test(info.deviceName || "");
+          if (!s.deviceName && info.deviceName && !isMac) s.deviceName = info.deviceName;
+          if (!s.vendor && info.vendor) s.vendor = info.vendor;
+        } catch {
+          /* not fatal — try again next cycle */
+        }
+      }
     } else {
       const goneFor = now - new Date(s.lastSeen).getTime();
       if (goneFor >= GRACE_MS) {
@@ -104,7 +119,10 @@ async function run() {
         const durationMs = new Date(disconnectedAt).getTime() - new Date(s.connectedAt).getTime();
         const durationLabel = fmtDuration(durationMs);
         try {
-          await updateSheetRow(s, disconnectedAt, durationLabel);
+          await updateSheetRow(s, disconnectedAt, durationLabel, {
+            deviceName: s.deviceName || "",
+            vendor: s.vendor || "",
+          });
           s.status = "done";
           s.disconnectedAt = disconnectedAt;
           s.duration = durationLabel;
