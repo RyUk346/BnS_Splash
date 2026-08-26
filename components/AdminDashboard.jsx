@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import StoreManager from "@/components/StoreManager";
 import {
   dedupeByDeviceDay,
   filterRows,
@@ -216,7 +217,8 @@ export default function AdminDashboard() {
     return Array.from(set).sort();
   }, [deduped]);
 
-  const isStoreView = view !== "overview" && view !== "customers";
+  const isStoreView =
+    view !== "overview" && view !== "customers" && view !== "manage-stores";
   const activeBranch = isStoreView ? view : "all";
 
   const filtered = useMemo(() => {
@@ -296,7 +298,13 @@ export default function AdminDashboard() {
       active ? "bg-white/15 font-semibold text-white" : "text-white/60 hover:bg-white/5 hover:text-white"
     }`;
 
-  const title = isStoreView ? view : view === "customers" ? "Customers" : "Overview";
+  const title = isStoreView
+    ? view
+    : view === "customers"
+    ? "Customers"
+    : view === "manage-stores"
+    ? "Manage stores"
+    : "Overview";
 
   /* Sidebar --------------------------------------------------------- */
 
@@ -333,6 +341,12 @@ export default function AdminDashboard() {
               </span>
             </button>
           ))}
+          <button
+            onClick={() => go("manage-stores")}
+            className={navItem(view === "manage-stores")}
+          >
+            <span className="text-white/70">+ Manage stores</span>
+          </button>
         </div>
       )}
 
@@ -386,6 +400,11 @@ export default function AdminDashboard() {
 
         {/* Main content */}
         <main className="min-w-0 flex-1 px-4 py-6 sm:px-6">
+          {view === "manage-stores" ? (
+            <div className="mx-auto max-w-6xl">
+              <StoreManager />
+            </div>
+          ) : (
           <div className="mx-auto max-w-6xl">
             {/* Header */}
             <div className="mb-6 hidden items-center justify-between gap-3 lg:flex">
@@ -549,6 +568,7 @@ export default function AdminDashboard() {
                       <th className="px-3 py-3">Name</th>
                       <th className="px-3 py-3">Email</th>
                       <th className="px-3 py-3">Phone</th>
+                      <th className="px-3 py-3">Device</th>
                       {!isStoreView && <th className="px-3 py-3">Store</th>}
                       <th className="px-3 py-3">Offers</th>
                     </tr>
@@ -572,6 +592,9 @@ export default function AdminDashboard() {
                         <td className="px-3 py-2.5 text-white/60">{e.email || "—"}</td>
                         <td className="whitespace-nowrap px-3 py-2.5 text-white/60">
                           {e.phone || "—"}
+                        </td>
+                        <td className="px-3 py-2.5 text-white/60" title={e.mac}>
+                          {e.deviceName || e.vendor || "—"}
                         </td>
                         {!isStoreView && (
                           <td className="whitespace-nowrap px-3 py-2.5 text-white/60">
@@ -612,6 +635,7 @@ export default function AdminDashboard() {
               One row per device per day — repeat connections that day are merged.
             </p>
           </div>
+          )}
         </main>
       </div>
     </div>

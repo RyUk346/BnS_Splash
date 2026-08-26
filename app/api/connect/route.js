@@ -73,12 +73,16 @@ export async function POST(req) {
   let authError = null;
   let branch = "";
   let consoleId = "";
+  let deviceName = "";
+  let vendor = "";
   if (MAC_RE.test(mac)) {
     try {
       const result = await authorizeGuest(mac);
       authorized = true;
       branch = result.branch || "";
       consoleId = result.consoleId || "";
+      deviceName = result.deviceName || "";
+      vendor = result.vendor || "";
     } catch (err) {
       authError = err;
       console.error("UniFi authorization failed:", err.message);
@@ -103,6 +107,8 @@ export async function POST(req) {
       ap,
       ssid,
       branch,
+      deviceName,
+      vendor,
     });
   } catch (err) {
     console.error("Google Sheets logging failed:", err.message);

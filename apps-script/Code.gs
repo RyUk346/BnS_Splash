@@ -19,7 +19,7 @@
 var HEADERS = [
   "Timestamp",       // A
   "Email",           // B
-  "First Name",      // C
+  "Name",            // C
   "Phone",           // D
   "Birthday",        // E  (DD/MM/YYYY)
   "Device MAC",      // F
@@ -29,6 +29,8 @@ var HEADERS = [
   "Promo Offers",    // J
   "Disconnected",    // K
   "Total Time",      // L
+  "Device Name",     // M
+  "Vendor",          // N
 ];
 
 var COL_TIMESTAMP = 1; // A
@@ -68,6 +70,8 @@ function doPost(e) {
       data.promo || "",
       "", // Disconnected (filled later by the poller)
       "", // Total Time
+      data.deviceName || "",
+      data.vendor || "",
     ]);
 
     return json({ success: true });
@@ -156,6 +160,8 @@ function readAllRows() {
       promo: String(r[9] || ""),
       disconnected: toIso(r[10]),
       duration: String(r[11] || ""),
+      deviceName: String(r[12] || ""),
+      vendor: String(r[13] || ""),
     });
   }
   return out;
