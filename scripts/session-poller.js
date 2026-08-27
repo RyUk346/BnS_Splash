@@ -118,6 +118,21 @@ async function run() {
         const disconnectedAt = s.lastSeen; // last time we actually saw it
         const durationMs = new Date(disconnectedAt).getTime() - new Date(s.connectedAt).getTime();
         const durationLabel = fmtDuration(durationMs);
+
+        // Last chance to identify the device. Even though it has left, UniFi
+        // keeps fingerprint results in its known-clients history — so short
+        // visits that disconnected before we could enrich them still resolve.
+        if (!s.deviceName || !s.vendor) {
+          try {
+            const info = await getClientInfo(s.consoleId, s.mac);
+            const isMac = /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/i.test(info.deviceName || "");
+            if (!s.deviceName && info.deviceName && !isMac) s.deviceName = info.deviceName;
+            if (!s.vendor && info.vendor) s.vendor = info.vendor;
+          } catch {
+            /* not fatal */
+          }
+        }
+
         try {
           await updateSheetRow(s, disconnectedAt, durationLabel, {
             deviceName: s.deviceName || "",

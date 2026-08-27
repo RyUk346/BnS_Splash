@@ -569,6 +569,7 @@ export default function AdminDashboard() {
                       <th className="px-3 py-3">Email</th>
                       <th className="px-3 py-3">Phone</th>
                       <th className="px-3 py-3">Device</th>
+                      <th className="px-3 py-3">Vendor</th>
                       {!isStoreView && <th className="px-3 py-3">Store</th>}
                       <th className="px-3 py-3">Offers</th>
                     </tr>
@@ -594,7 +595,16 @@ export default function AdminDashboard() {
                           {e.phone || "—"}
                         </td>
                         <td className="px-3 py-2.5 text-white/60" title={e.mac}>
-                          {e.deviceName || e.vendor || "—"}
+                          {e.deviceName || "—"}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-white/60">
+                          {e.vendor && e.vendor !== "Randomised" ? (
+                            e.vendor
+                          ) : (
+                            <span className="text-white/30" title="Device uses a randomised MAC — UniFi can't identify the manufacturer">
+                              {e.vendor === "Randomised" ? "Randomised" : "—"}
+                            </span>
+                          )}
                         </td>
                         {!isStoreView && (
                           <td className="whitespace-nowrap px-3 py-2.5 text-white/60">
@@ -616,7 +626,7 @@ export default function AdminDashboard() {
                     ))}
                     {!filtered.length && !loading && (
                       <tr>
-                        <td colSpan={8} className="px-3 py-10 text-center text-white/40">
+                        <td colSpan={isStoreView ? 9 : 10} className="px-3 py-10 text-center text-white/40">
                           No entries for these filters.
                         </td>
                       </tr>
