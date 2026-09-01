@@ -5,11 +5,11 @@ import { useEffect, useState } from "react";
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH || "";
 
 const btn =
-  "rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-40";
+  "rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs xl:text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-40";
 const btnPrimary =
-  "rounded-lg bg-white px-4 py-2 text-xs font-semibold text-neutral-900 transition hover:bg-white/90 disabled:opacity-40";
+  "rounded-lg bg-white px-4 py-2 text-xs xl:text-sm font-semibold text-neutral-900 transition hover:bg-white/90 disabled:opacity-40";
 const input =
-  "w-full rounded-lg border border-white/15 bg-neutral-900 px-3 py-2 text-sm text-white placeholder-white/30 outline-none focus:border-white/50";
+  "w-full rounded-lg border border-white/15 bg-neutral-900 px-3 py-2 text-sm xl:text-base text-white placeholder-white/30 outline-none focus:border-white/50";
 
 /** Small coloured status pill. */
 function Pill({ tone, children }) {
@@ -186,8 +186,8 @@ export default function StoreManager() {
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="bns-heading text-2xl">Stores</h1>
-          <p className="text-sm text-white/50">
+          <h1 className="bns-heading text-2xl xl:text-3xl 2xl:text-4xl">Stores</h1>
+          <p className="text-sm xl:text-base text-white/50">
             {loading ? "Loading…" : `${stores.length} configured`}
           </p>
         </div>
@@ -202,17 +202,17 @@ export default function StoreManager() {
       </div>
 
       {error && (
-        <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+        <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm xl:text-base text-red-300">
           {error}
         </div>
       )}
       {notice && (
-        <div className="mb-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+        <div className="mb-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm xl:text-base text-emerald-300">
           {notice}
         </div>
       )}
       {!fileBacked && !loading && (
-        <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+        <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm xl:text-base text-amber-200">
           These stores are currently read from the server&apos;s <code>.env</code> file. Adding or
           editing one here moves the list into <code>data/stores.json</code>, after which changes
           take effect instantly without touching the server.
@@ -223,15 +223,15 @@ export default function StoreManager() {
       {adding && (
         <div className="mb-6 rounded-xl border border-white/15 bg-white/5 p-5">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-white/90">Add a store</h2>
-            <button onClick={() => setAdding(false)} className="text-xs text-white/40 hover:text-white">
+            <h2 className="text-sm xl:text-base font-semibold text-white/90">Add a store</h2>
+            <button onClick={() => setAdding(false)} className="text-xs xl:text-sm text-white/40 hover:text-white">
               ✕ Cancel
             </button>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs text-white/50">
+              <label className="mb-1 block text-xs xl:text-sm text-white/50">
                 UniFi console
                 {discovering && <span className="ml-2 text-amber-300">discovering…</span>}
               </label>
@@ -272,7 +272,7 @@ export default function StoreManager() {
               )}
 
               <details className="mt-3">
-                <summary className="cursor-pointer text-xs text-white/40 hover:text-white/70">
+                <summary className="cursor-pointer text-xs xl:text-sm text-white/40 hover:text-white/70">
                   Or paste a console ID manually
                 </summary>
                 <input
@@ -280,13 +280,13 @@ export default function StoreManager() {
                   value={manualId}
                   onChange={(e) => setManualId(e.target.value)}
                   placeholder="6C63F8...:123456789"
-                  className={`${input} mt-2 font-mono text-xs`}
+                  className={`${input} mt-2 font-mono text-xs xl:text-sm`}
                 />
               </details>
             </div>
 
             <div>
-              <label className="mb-1 block text-xs text-white/50">Store name</label>
+              <label className="mb-1 block text-xs xl:text-sm text-white/50">Store name</label>
               <input
                 type="text"
                 value={newLabel}
@@ -319,8 +319,8 @@ export default function StoreManager() {
       {/* Store list */}
       <div className="overflow-hidden rounded-xl border border-white/10 bg-white/5">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-sm">
-            <thead className="bg-white/5 text-xs uppercase tracking-wide text-white/50">
+          <table className="w-full min-w-[720px] text-left text-sm xl:text-base">
+            <thead className="bg-white/5 text-xs xl:text-sm uppercase tracking-wide text-white/50">
               <tr>
                 <th className="px-4 py-3">Store</th>
                 <th className="px-4 py-3">Console ID</th>
@@ -379,7 +379,7 @@ export default function StoreManager() {
                       </button>
                       <button
                         onClick={() => remove(s)}
-                        className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 transition hover:bg-red-500/20"
+                        className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs xl:text-sm font-semibold text-red-300 transition hover:bg-red-500/20"
                       >
                         Remove
                       </button>
@@ -399,7 +399,7 @@ export default function StoreManager() {
         </div>
       </div>
 
-      <p className="mt-4 text-xs text-white/30">
+      <p className="mt-4 text-xs xl:text-sm text-white/30">
         Changes take effect immediately — no server restart or redeploy required.
       </p>
     </div>

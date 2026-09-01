@@ -24,7 +24,13 @@ export async function GET(req) {
 
   const force = new URL(req.url).searchParams.get("refresh") === "1";
   if (!force && cache.rows && Date.now() - cache.at < CACHE_MS) {
-    return NextResponse.json({ success: true, rows: cache.rows, cached: true });
+    return NextResponse.json({
+      success: true,
+      rows: cache.rows,
+      source: cache.source,
+      cleanedAt: cache.cleanedAt,
+      cached: true,
+    });
   }
 
   try {
@@ -34,8 +40,18 @@ export async function GET(req) {
     const data = await res.json();
     if (!data.success) throw new Error(data.error || "Sheets read failed");
 
-    cache = { at: Date.now(), rows: data.rows || [] };
-    return NextResponse.json({ success: true, rows: cache.rows });
+    cache = {
+      at: Date.now(),
+      rows: data.rows || [],
+      source: data.source || "raw", // "clean" once Cleanup.gs has run
+      cleanedAt: data.cleanedAt || "",
+    };
+    return NextResponse.json({
+      success: true,
+      rows: cache.rows,
+      source: cache.source,
+      cleanedAt: cache.cleanedAt,
+    });
   } catch (err) {
     console.error("Admin data fetch failed:", err.message);
     // Serve stale data rather than nothing, if we have any.

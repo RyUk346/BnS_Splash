@@ -137,17 +137,37 @@ function doGet(e) {
     if (params.key !== READ_KEY) {
       return json({ success: false, error: "unauthorized" });
     }
-    return json({ success: true, rows: readAllRows() });
+    var read = readAllRows();
+    return json({
+      success: true,
+      rows: read.rows,
+      source: read.source, // "clean" | "raw"
+      cleanedAt: PropertiesService.getScriptProperties().getProperty("CLEAN_BUILT_AT") || "",
+    });
   }
 
   return json({ ok: true, service: "HyperGlow WiFi signups webhook" });
 }
 
-/** Every data row as an object keyed by our known columns. */
+/**
+ * Every data row as an object keyed by our known columns.
+ *
+ * Reads the "Clean" tab when Cleanup.gs has produced one (de-duplicated,
+ * test rows removed, store backfilled), otherwise falls back to the raw
+ * signup tab so the dashboard never goes blank.
+ *
+ * Writes always go to the raw tab — it stays the untouched record of what
+ * guests actually submitted.
+ */
 function readAllRows() {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var clean = ss.getSheetByName("Clean");
+  var useClean = clean && clean.getLastRow() > 1;
+  var sheet = useClean ? clean : ss.getSheets()[0];
+  var source = useClean ? "clean" : "raw";
+
   var last = sheet.getLastRow();
-  if (last < 2) return [];
+  if (last < 2) return { rows: [], source: source };
 
   var values = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
   var out = [];
@@ -172,7 +192,7 @@ function readAllRows() {
       vendor: String(r[13] || ""),
     });
   }
-  return out;
+  return { rows: out, source: source };
 }
 
 /** Sheets may hand back a Date object or a string; normalise to ISO text. */

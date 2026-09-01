@@ -291,7 +291,39 @@ Sheet back and presents it as filterable analytics.
    - `SHEETS_READ_KEY=` the same value as `READ_KEY` above
 3. `npm run build && pm2 restart hyperglow-splash`
 
-**Features:**
+**Pages:**
+
+| Page | Purpose |
+|---|---|
+| **Overview** | What to do this week — headline numbers, lifecycle segments, new vs returning, per-store split. Opens on the **last 7 days**. |
+| **Insights** | Deeper analysis — trading periods, day×hour heatmap, return timing, visit frequency, dwell, birthdays, store comparison, data quality. |
+| **Stores → \<name\>** | The same view scoped to one store. |
+| **Customers** | The contact list, with a marketing-opt-ins-only toggle. |
+| **Manage stores** | Add/rename/remove stores (see §9c). |
+
+**Analytics design rules** (in `lib/analytics.js`, unit-tested):
+
+- **Guest identity** is the email, falling back to the device MAC.
+- **Guest history is always built from the full dataset**, never the filtered
+  view — otherwise a guest whose first visit predates the selected window
+  would be counted as new.
+- **All day/hour maths uses a fixed business timezone** (`BUSINESS_TZ`,
+  default `Europe/London`, override with `NEXT_PUBLIC_TIMEZONE`). Dayparts must
+  not shift because someone opens the dashboard from another country.
+- **Small samples are flagged, not hidden.** Any rate derived from fewer than
+  `MIN_SAMPLE` (30) visits renders greyed with a "low n" marker. A confident
+  "30.8%" built on six people is worse than no number.
+- **Lifecycle segments and return timing are all-time**, deliberately ignoring
+  the date filter — you contact people based on when they last visited, not on
+  the window you happen to be looking at.
+
+**Known limits, worth repeating to the client:** WiFi guests are a subset of
+footfall, so read rates rather than absolute counts. Repeat visits are a
+**floor** — a guest still inside their 24-hour authorisation doesn't
+re-register. And there is no spend data, so nothing here measures customer
+value; that needs the POS linkage.
+
+**Filters and export:**
 
 - **Store filter** — dropdown of branches (from the Branch column).
 - **Date range** — from/to date pickers plus quick buttons: This month,
