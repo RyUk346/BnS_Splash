@@ -85,20 +85,20 @@ export default function AudienceDrawer({ open, onClose, title, subtitle, guests,
   const mailtoHref = `mailto:?bcc=${encodeURIComponent(emails.join(","))}`;
 
   const btn =
-    "rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs xl:text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-40";
+    "rounded-lg border border-ink/15 bg-ink/5 px-3 py-2 text-xs xl:text-sm font-semibold text-ink/80 transition hover:bg-ink/10 disabled:opacity-40";
   const btnPrimary =
-    "rounded-lg bg-white px-3 py-2 text-xs xl:text-sm font-semibold text-neutral-900 transition hover:bg-white/90 disabled:opacity-40";
+    "rounded-lg bg-ink px-3 py-2 text-xs xl:text-sm font-semibold text-surface transition hover:bg-ink/90 disabled:opacity-40";
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} aria-hidden />
-      <aside className="relative flex h-full w-full max-w-xl flex-col border-l border-white/10 bg-neutral-950 shadow-2xl">
+      <aside className="relative flex h-full w-full max-w-xl flex-col border-l border-ink/10 bg-surface shadow-2xl">
         {/* Header */}
-        <div className="border-b border-white/10 p-5">
+        <div className="border-b border-ink/10 p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="bns-heading text-xl xl:text-2xl text-white">{title}</h2>
-              {subtitle && <p className="mt-0.5 text-sm xl:text-base text-white/50">{subtitle}</p>}
+              <h2 className="bns-heading text-xl xl:text-2xl text-ink">{title}</h2>
+              {subtitle && <p className="mt-0.5 text-sm xl:text-base text-ink/50">{subtitle}</p>}
             </div>
             <button onClick={onClose} className={btn} aria-label="Close">
               ✕
@@ -127,20 +127,20 @@ export default function AudienceDrawer({ open, onClose, title, subtitle, guests,
             >
               Open mail draft
             </a>
-            <label className="ml-auto flex cursor-pointer items-center gap-2 text-xs xl:text-sm text-white/60">
+            <label className="ml-auto flex cursor-pointer items-center gap-2 text-xs xl:text-sm text-ink/60">
               <input
                 type="checkbox"
                 checked={onlyContactable}
                 onChange={(e) => setOnlyContactable(e.target.checked)}
-                className="h-4 w-4 accent-white"
+                className="h-4 w-4 accent-ink"
               />
               Opted-in only
             </label>
           </div>
 
-          {copied && <p className="mt-2 text-xs xl:text-sm text-emerald-300">{copied}</p>}
+          {copied && <p className="mt-2 text-xs xl:text-sm text-good">{copied}</p>}
 
-          <p className="mt-3 text-[11px] xl:text-xs text-white/35">
+          <p className="mt-3 text-[11px] xl:text-xs text-ink/35">
             Paste into your email platform (Mailchimp, Brevo…) rather than sending a
             large BCC — marketing mail must carry an unsubscribe link, and bulk BCC
             tends to land in spam.
@@ -150,24 +150,24 @@ export default function AudienceDrawer({ open, onClose, title, subtitle, guests,
         {/* List */}
         <div className="flex-1 overflow-y-auto">
           {!list.length && (
-            <p className="p-6 text-center text-sm xl:text-base text-white/40">
+            <p className="p-6 text-center text-sm xl:text-base text-ink/40">
               {emptyNote || "Nobody in this group."}
             </p>
           )}
-          <ul className="divide-y divide-white/5">
+          <ul className="divide-y divide-ink/5">
             {list.map((g) => (
-              <li key={g.key} className="flex items-center gap-3 px-5 py-3 hover:bg-white/5">
+              <li key={g.key} className="flex items-center gap-3 px-5 py-3 hover:bg-ink/5">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm xl:text-base font-medium text-white">
+                  <p className="truncate text-sm xl:text-base font-medium text-ink">
                     {g.name || "—"}
                     {!g.contactable && (
-                      <span className="ml-2 rounded bg-white/10 px-1.5 py-0.5 text-[10px] xl:text-xs text-white/50">
+                      <span className="ml-2 rounded bg-ink/10 px-1.5 py-0.5 text-[10px] xl:text-xs text-ink/50">
                         not opted in
                       </span>
                     )}
                   </p>
-                  <p className="truncate text-xs xl:text-sm text-white/50">{g.email || "no email"}</p>
-                  <p className="mt-0.5 text-[11px] xl:text-xs text-white/35">
+                  <p className="truncate text-xs xl:text-sm text-ink/50">{g.email || "no email"}</p>
+                  <p className="mt-0.5 text-[11px] xl:text-xs text-ink/35">
                     {g.birthday
                       ? `Birthday ${g.birthday}`
                       : g.last
@@ -182,7 +182,7 @@ export default function AudienceDrawer({ open, onClose, title, subtitle, guests,
                 {g.email && (
                   <a
                     href={`mailto:${g.email}`}
-                    className="shrink-0 rounded-lg border border-white/15 px-2 py-1 text-[11px] xl:text-xs text-white/60 hover:bg-white/10"
+                    className="shrink-0 rounded-lg border border-ink/15 px-2 py-1 text-[11px] xl:text-xs text-ink/60 hover:bg-ink/10"
                     title={`Email ${g.email}`}
                   >
                     Email
@@ -193,7 +193,7 @@ export default function AudienceDrawer({ open, onClose, title, subtitle, guests,
           </ul>
         </div>
 
-        <div className="border-t border-white/10 px-5 py-3 text-xs xl:text-sm text-white/40">
+        <div className="border-t border-ink/10 px-5 py-3 text-xs xl:text-sm text-ink/40">
           {list.length} shown{" "}
           {onlyContactable && guests && guests.length > list.length
             ? `· ${guests.length - list.length} hidden (not opted in)`

@@ -41,7 +41,14 @@ export async function POST(req) {
 
   const email = normalizeEmail(body.email);
   const firstName = (body.firstName || "").trim();
-  const phone = (body.phone || "").trim();
+  // Same normalisation as the splash form, repeated here because client-side
+  // checks are bypassable: digits only, +44/0044 folded back to a leading 0.
+  const phone = (() => {
+    let d = String(body.phone || "").replace(/\D/g, "");
+    if (d.startsWith("0044")) d = "0" + d.slice(4);
+    else if (d.startsWith("44")) d = "0" + d.slice(2);
+    return d.slice(0, 11);
+  })();
   const birthday = (body.birthday || "").trim();
   // Marketing consent: "Yes" | "No" (anything else is stored blank)
   const promo = body.promo === "Yes" ? "Yes" : body.promo === "No" ? "No" : "";
@@ -59,6 +66,13 @@ export async function POST(req) {
   if (birthday && !/^\d{2}\/\d{2}\/\d{4}$/.test(birthday)) {
     return NextResponse.json(
       { success: false, error: "Birthday must be DD/MM/YYYY" },
+      { status: 400 }
+    );
+  }
+  // Client-side checks are bypassable, so the same rule is enforced here.
+  if (phone && !/^07\d{9}$/.test(phone)) {
+    return NextResponse.json(
+      { success: false, error: "Phone must be a UK mobile — 11 digits starting 07" },
       { status: 400 }
     );
   }

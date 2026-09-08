@@ -26,9 +26,24 @@ export const viewport = {
   themeColor: "#000000",
 };
 
+/*
+ * Sets the admin theme before the browser paints, so the page never flashes
+ * the wrong colour while React hydrates. No stored choice means follow the
+ * operating system. The guest splash page ignores these tokens entirely —
+ * it's always the branded light card — so running this everywhere is harmless.
+ */
+const THEME_SCRIPT = `(function(){try{
+var t=localStorage.getItem('hg-admin-theme');
+if(t!=='light'&&t!=='dark'){t=window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';}
+document.documentElement.setAttribute('data-theme',t);
+}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();`;
+
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className={`${oswald.variable} ${inter.variable}`}>
+    <html lang="en" className={`${oswald.variable} ${inter.variable}`} data-theme="dark">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body className="bg-black text-white min-h-screen antialiased">
         {children}
       </body>

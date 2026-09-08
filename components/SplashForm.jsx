@@ -44,6 +44,29 @@ async function waitUntilOnline(mac) {
   await sleep(800);
 }
 
+/**
+ * Reduce anything a guest types or pastes to plain UK digits.
+ * Spaces, brackets and dashes go; a pasted "+44 7123 456789" or
+ * "0044 7123 456789" becomes "07123456789" rather than being rejected —
+ * phones hand out the +44 form, and refusing it would just lose the number.
+ */
+function toUkPhoneDigits(raw) {
+  let d = String(raw || "").replace(/\D/g, "");
+  if (d.startsWith("0044")) d = "0" + d.slice(4);
+  else if (d.startsWith("44")) d = "0" + d.slice(2);
+  return d.slice(0, 11);
+}
+
+/**
+ * UK mobile: 11 digits beginning 07 — e.g. 07123456789.
+ * Optional field, so blank passes; anything typed has to be a real number.
+ * Guests were entering short or mistyped numbers that could never be called.
+ */
+function isValidUkPhone(value) {
+  if (!value) return true; // optional field
+  return /^07\d{9}$/.test(value);
+}
+
 function isValidBirthday(value) {
   if (!value) return true; // optional field
   const m = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
@@ -97,12 +120,14 @@ export default function SplashForm() {
   const emailValid = EMAIL_RE.test(normalizeEmail(email));
   const nameValid = firstName.trim().length > 0;
   const birthdayValid = isValidBirthday(birthday.trim());
+  const phoneValid = isValidUkPhone(phone.trim());
   const canSubmit =
     emailValid &&
     !emailSuggestion && // an unresolved typo suggestion blocks submit
     !emailError &&
     nameValid &&
     birthdayValid &&
+    phoneValid &&
     promo !== "" &&
     status !== "submitting";
 
@@ -118,6 +143,13 @@ export default function SplashForm() {
     setEmail(emailSuggestion);
     setEmailSuggestion("");
     setEmailError("");
+  }
+
+  // Digits only, capped at 11 — the field simply won't accept a letter, a
+  // space or a 12th digit, so most mistakes are impossible rather than
+  // reported after the fact.
+  function handlePhoneChange(e) {
+    setPhone(toUkPhoneDigits(e.target.value));
   }
 
   // Auto-format as the guest types: DDMMYYYY -> DD/MM/YYYY
@@ -296,13 +328,22 @@ export default function SplashForm() {
                     <input
                       id="phone"
                       type="tel"
-                      inputMode="tel"
+                      inputMode="numeric"
                       autoComplete="tel"
-                      placeholder="07123 456789"
+                      placeholder="07123456789"
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      className={`${INPUT} border-gray-300`}
+                      onChange={handlePhoneChange}
+                      onBlur={() => setTouched((s) => ({ ...s, phone: true }))}
+                      className={`${INPUT} ${
+                        touched.phone && !phoneValid ? "border-red-500" : "border-gray-300"
+                      }`}
+                      maxLength={11}
                     />
+                    {touched.phone && !phoneValid && (
+                      <p className="mt-1 text-xs text-red-600">
+                        Enter a UK mobile number — 11 digits starting 07.
+                      </p>
+                    )}
                   </div>
 
                   {/* Birthday */}

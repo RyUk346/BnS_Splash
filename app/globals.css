@@ -2,11 +2,107 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Admin theme tokens, as space-separated RGB channels so Tailwind can apply
+ * its own alpha (`text-ink/50`). Dark is the default; `data-theme="light"`
+ * on <html> flips it. The guest splash page doesn't use these — it is always
+ * the branded light card.
+ */
+:root {
+  --ink: 255 255 255;
+  --surface: 10 10 10;
+  --panel: 23 23 23;
+
+  --good: 110 231 183;  /* emerald-300  */
+  --warn: 253 230 138;  /* amber-200    */
+  --info: 125 211 252;  /* sky-300      */
+  --bad: 252 165 165;   /* red-300      */
+}
+
+:root[data-theme="light"] {
+  --ink: 15 15 15;
+  --surface: 250 250 249;
+  --panel: 255 255 255;
+
+  /* Darker shades — the pale ones vanish against a light background.
+     All four clear 5:1 on their own tinted chip. */
+  --good: 6 95 70;      /* emerald-800 */
+  --warn: 120 53 15;    /* amber-900   */
+  --info: 7 89 133;     /* sky-800     */
+  --bad: 153 27 27;     /* red-800     */
+}
+
+/*
+ * The UI's opacity ladder (/25 faintest … /100 headings) was tuned for white
+ * text on black. Inverted, black on white washes out far faster: text-ink/30
+ * measures 18:1 on dark but under 2:1 on light — effectively invisible.
+ *
+ * Rather than re-tag ~250 utilities, the whole ladder is rescaled for light
+ * mode. The values below were solved for two properties at once: every step
+ * is more contrasty than the one below it (so the visual hierarchy survives),
+ * and everything from /30 up clears roughly 4.5:1. /25 is used only for
+ * placeholder text, where ~3:1 is acceptable.
+ */
+/*
+ * Dark mode has the same problem at the bottom of the ladder, just less
+ * severely — /30 footnotes sat at 2.7:1, well under the 4.5:1 needed to read
+ * comfortably. Only the four faintest steps are lifted, staying below /50 so
+ * the rest of the interface looks exactly as before.
+ */
+:root:not([data-theme="light"]) .text-ink\/25 { color: rgb(var(--ink) / 0.39); }
+:root:not([data-theme="light"]) .text-ink\/30 { color: rgb(var(--ink) / 0.43); }
+:root:not([data-theme="light"]) .text-ink\/35 { color: rgb(var(--ink) / 0.46); }
+:root:not([data-theme="light"]) .text-ink\/40 { color: rgb(var(--ink) / 0.47); }
+
+:root[data-theme="light"] .text-ink\/25 { color: rgb(var(--ink) / 0.47); }
+:root[data-theme="light"] .text-ink\/30 { color: rgb(var(--ink) / 0.58); }
+:root[data-theme="light"] .text-ink\/35 { color: rgb(var(--ink) / 0.62); }
+:root[data-theme="light"] .text-ink\/40 { color: rgb(var(--ink) / 0.66); }
+:root[data-theme="light"] .text-ink\/50 { color: rgb(var(--ink) / 0.71); }
+:root[data-theme="light"] .text-ink\/60 { color: rgb(var(--ink) / 0.77); }
+:root[data-theme="light"] .text-ink\/70 { color: rgb(var(--ink) / 0.83); }
+:root[data-theme="light"] .text-ink\/80 { color: rgb(var(--ink) / 0.88); }
+:root[data-theme="light"] .text-ink\/90 { color: rgb(var(--ink) / 0.93); }
+/* Borders and dividers are decorative, but 5% black on white is invisible. */
+:root[data-theme="light"] .border-ink\/10 { border-color: rgb(var(--ink) / 0.14); }
+:root[data-theme="light"] .border-ink\/15 { border-color: rgb(var(--ink) / 0.18); }
+:root[data-theme="light"] .divide-ink\/5 > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgb(var(--ink) / 0.1);
+}
+
 body {
   font-family: var(--font-body), -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, "Helvetica Neue", Arial, sans-serif;
   background: #f5f4f0;
   color: #0a0a0a;
+}
+
+/* Date pickers and selects render their own chrome; without this the native
+   calendar icon stays black-on-black in dark mode. */
+:root { color-scheme: dark; }
+:root[data-theme="light"] { color-scheme: light; }
+
+/* The body is styled for the guest splash page (always black behind the
+   photo). When the admin panel is on screen instead, the body needs to match
+   the active theme — otherwise overscrolling reveals a black band in light
+   mode. */
+body:has(.admin-root) {
+  background: rgb(var(--surface));
+  color: rgb(var(--ink));
+}
+
+/*
+ * Both logos are single-colour on transparent, so one file covers both themes
+ * — inverted on the theme it would otherwise disappear into. Cheaper and less
+ * error-prone than shipping and swapping two variants of each.
+ *   .logo-white-asset — drawn white  (Burger & Sauce), invert on light
+ *   .logo-dark-asset  — drawn grey   (HyperGlow),      invert on dark
+ */
+:root[data-theme="light"] .logo-white-asset {
+  filter: invert(1);
+}
+:root:not([data-theme="light"]) .logo-dark-asset {
+  filter: invert(1);
 }
 
 /* Burger & Sauce style: bold, condensed, uppercase headings */

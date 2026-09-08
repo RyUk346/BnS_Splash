@@ -1,14 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import StoreManager from "@/components/StoreManager";
+import ThemeToggle from "@/components/ThemeToggle";
 import InsightsView from "@/components/InsightsView";
+import CustomersView from "@/components/CustomersView";
 import AudienceDrawer from "@/components/AudienceDrawer";
 import { Panel, StatCard, BarChart, HBars, Insight } from "@/components/ui/Charts";
 import {
   // aliased: `audience` is also the name of the drawer's state below
   audience as audienceStats,
   buildGuestIndex,
+  customerRoster,
+  customersToCsv,
   daysUntilBirthday,
   dedupeByDeviceDay,
   filterRows,
@@ -43,10 +48,10 @@ function birthdayLabel(value) {
 
 /** Colour for a loyalty tier badge — VIPs should catch the eye. */
 const TIER_STYLE = {
-  vip: "bg-amber-400/20 text-amber-200",
-  good: "bg-emerald-500/20 text-emerald-300",
-  ok: "bg-sky-500/20 text-sky-300",
-  new: "bg-white/10 text-white/50",
+  vip: "bg-amber-400/20 text-warn",
+  good: "bg-emerald-500/20 text-good",
+  ok: "bg-sky-500/20 text-info",
+  new: "bg-ink/10 text-ink/50",
 };
 
 /* Shared UI pieces (StatCard, BarChart, HBars, Panel, Insight) come from
@@ -80,26 +85,32 @@ function LoginScreen({ onSuccess }) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-neutral-950 px-4">
+    <div className="admin-root flex min-h-screen items-center justify-center bg-surface px-4">
       <form
         onSubmit={submit}
-        className="w-full max-w-sm rounded-2xl border border-white/10 bg-white/5 p-6"
+        className="w-full max-w-sm rounded-2xl border border-ink/10 bg-ink/5 p-6"
       >
-        <h1 className="bns-heading text-2xl xl:text-3xl 2xl:text-4xl text-white">HyperGlow Admin</h1>
-        <p className="mb-5 mt-1 text-sm xl:text-base text-white/50">Guest WiFi dashboard</p>
+        <img
+          src={`${BASE}/bns-logo.svg`}
+          alt="Burger & Sauce"
+          width={567}
+          height={97}
+          className="logo-white-asset mb-5 h-auto w-full max-w-[220px]"
+        />
+        <p className="mb-5 text-sm xl:text-base text-ink/50">Guest WiFi dashboard</p>
         <input
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Password"
           autoFocus
-          className="w-full rounded-lg border border-white/15 bg-white/10 px-4 py-3 text-white placeholder-white/30 outline-none focus:border-white/50"
+          className="w-full rounded-lg border border-ink/15 bg-ink/10 px-4 py-3 text-ink placeholder-ink/30 outline-none focus:border-ink/50"
         />
-        {error && <p className="mt-2 text-xs xl:text-sm text-red-400">{error}</p>}
+        {error && <p className="mt-2 text-xs xl:text-sm text-bad">{error}</p>}
         <button
           type="submit"
           disabled={busy || !password}
-          className="bns-heading mt-4 w-full rounded-lg bg-white px-4 py-3 text-neutral-900 transition disabled:opacity-40"
+          className="bns-heading mt-4 w-full rounded-lg bg-ink px-4 py-3 text-surface transition disabled:opacity-40"
         >
           {busy ? "Checking…" : "Sign in"}
         </button>
@@ -176,8 +187,16 @@ export default function AdminDashboard() {
   const isStoreView = !FIXED_VIEWS.includes(view);
   const activeBranch = isStoreView ? view : "all";
 
+  // Store + date only. "Who visited in this period" must not also depend on
+  // the search box or the opt-in checkbox, or the Customers scope toggle
+  // would quietly mean something different from what it says.
+  const scoped = useMemo(
+    () => filterRows(deduped, { branch: activeBranch, from, to }),
+    [deduped, activeBranch, from, to]
+  );
+
   const filtered = useMemo(() => {
-    let out = filterRows(deduped, { branch: activeBranch, from, to });
+    let out = scoped;
     const q = search.trim().toLowerCase();
     if (q) {
       out = out.filter((e) =>
@@ -190,7 +209,7 @@ export default function AdminDashboard() {
       out = out.filter((e) => (e.promo || "").toLowerCase() === "yes");
     }
     return out;
-  }, [deduped, activeBranch, from, to, search, onlyOptedIn]);
+  }, [scoped, search, onlyOptedIn]);
 
   const stats = useMemo(() => summarize(filtered), [filtered]);
   const byBranch = useMemo(() => visitsByBranch(filtered), [filtered]);
@@ -256,6 +275,27 @@ export default function AdminDashboard() {
     return enriched;
   }, [enriched, focus]);
 
+  /* Customer roster — one record per person, lifetime figures.
+     Built from the whole dataset so a regular still shows every visit; the
+     Customers view scopes it to the date window using periodKeys. */
+  const roster = useMemo(() => {
+    const full = customerRoster(deduped);
+    if (!isStoreView) return full;
+    // Inside a store view, only people who have actually been to that store.
+    return full.filter((c) => c.storeList.includes(view));
+  }, [deduped, isStoreView, view]);
+
+  const periodKeys = useMemo(
+    () => new Set(scoped.map((e) => guestKey(e))),
+    [scoped]
+  );
+
+  const periodLabel = useMemo(() => {
+    if (!from && !to) return "at any time";
+    if (from && to && from === to) return "on this day";
+    return "in this period";
+  }, [from, to]);
+
   // Raw (pre-dedupe) rows for the same period — data-quality checks need the
   // duplicates the dedupe removes, but must still respect the date filter,
   // otherwise old problems keep being reported as if they were current.
@@ -308,6 +348,19 @@ export default function AdminDashboard() {
     URL.revokeObjectURL(url);
   }
 
+  /** Customer-shaped CSV — one row per person, not per visit. */
+  function downloadCustomersCsv(customers) {
+    const csv = customersToCsv(customers);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const label = isStoreView ? view.replace(/\s+/g, "-").toLowerCase() : "all-stores";
+    a.href = url;
+    a.download = `wifi-customers_${label}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function go(target) {
     setView(target);
     setNavOpen(false);
@@ -319,11 +372,11 @@ export default function AdminDashboard() {
   if (!authed) return <LoginScreen onSuccess={() => load(true)} />;
 
   const btn =
-    "rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs xl:text-sm font-semibold text-white/80 transition hover:bg-white/10";
+    "rounded-lg border border-ink/15 bg-ink/5 px-3 py-2 text-xs xl:text-sm font-semibold text-ink/80 transition hover:bg-ink/10";
 
   const navItem = (active) =>
     `flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm xl:text-base transition ${
-      active ? "bg-white/15 font-semibold text-white" : "text-white/60 hover:bg-white/5 hover:text-white"
+      active ? "bg-ink/15 font-semibold text-ink" : "text-ink/60 hover:bg-ink/5 hover:text-ink"
     }`;
 
   const TITLES = {
@@ -338,9 +391,18 @@ export default function AdminDashboard() {
 
   const sidebar = (
     <nav className="flex h-full flex-col gap-1 p-4">
-      <div className="mb-4 px-1">
-        <p className="bns-heading text-lg xl:text-xl leading-tight text-white">HyperGlow</p>
-        <p className="text-xs xl:text-sm text-white/40">Guest WiFi Admin</p>
+      <div className="mb-5 px-1">
+        {/* Plain <img>, not next/image: the logo is an SVG, so there is
+            nothing for the image optimiser to do, and Next would need
+            dangerouslyAllowSVG to serve it through /_next/image. */}
+        <img
+          src={`${BASE}/bns-logo.svg`}
+          alt="Burger & Sauce"
+          width={567}
+          height={97}
+          className="logo-white-asset h-auto w-full max-w-[190px]"
+        />
+        <p className="mt-2 text-xs xl:text-sm text-ink/40">Guest WiFi Admin</p>
       </div>
 
       <button onClick={() => go("overview")} className={navItem(view === "overview")}>
@@ -358,17 +420,17 @@ export default function AdminDashboard() {
         aria-expanded={storesOpen}
       >
         <span>Stores</span>
-        <span className="text-xs xl:text-sm text-white/40">{storesOpen ? "▾" : "▸"}</span>
+        <span className="text-xs xl:text-sm text-ink/40">{storesOpen ? "▾" : "▸"}</span>
       </button>
       {storesOpen && (
-        <div className="ml-2 mt-0.5 space-y-0.5 border-l border-white/10 pl-2">
+        <div className="ml-2 mt-0.5 space-y-0.5 border-l border-ink/10 pl-2">
           {branches.length === 0 && (
-            <p className="px-3 py-2 text-xs xl:text-sm text-white/30">No stores yet</p>
+            <p className="px-3 py-2 text-xs xl:text-sm text-ink/30">No stores yet</p>
           )}
           {branches.map((b) => (
             <button key={b} onClick={() => go(b)} className={navItem(view === b)}>
               <span className="truncate">{b}</span>
-              <span className="ml-2 shrink-0 rounded bg-white/10 px-1.5 py-0.5 text-[10px] xl:text-xs text-white/60">
+              <span className="ml-2 shrink-0 rounded bg-ink/10 px-1.5 py-0.5 text-[10px] xl:text-xs text-ink/60">
                 {branchCounts.get(b) || 0}
               </span>
             </button>
@@ -377,7 +439,7 @@ export default function AdminDashboard() {
             onClick={() => go("manage-stores")}
             className={navItem(view === "manage-stores")}
           >
-            <span className="text-white/70">+ Manage stores</span>
+            <span className="text-ink/70">+ Manage stores</span>
           </button>
         </div>
       )}
@@ -387,18 +449,43 @@ export default function AdminDashboard() {
       </button>
 
       <div className="mt-auto space-y-2 pt-4">
+        <ThemeToggle className="w-full" />
         <button onClick={() => load(true)} className={btn + " w-full"} disabled={loading}>
           ↻ Refresh data
         </button>
         <button onClick={logout} className={btn + " w-full"}>
           Sign out
         </button>
+
+        <div className="flex flex-col items-center gap-1.5 border-t border-ink/10 pt-4">
+          <span className="text-[10px] xl:text-xs uppercase tracking-wider text-ink/30">
+            Powered by
+          </span>
+          <a
+            href="https://hyperglow.co.uk"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="opacity-70 transition hover:opacity-100"
+          >
+            {/* BASE prefix to match how SplashForm loads its logo — the app
+                is served under /SplashPage/BnS, not the domain root. */}
+            <Image
+              src={`${BASE}/hyperglow-logo.png.webp`}
+              alt="HyperGlow"
+              width={300}
+              height={74}
+              className="logo-dark-asset h-auto w-full max-w-[120px]"
+            />
+          </a>
+        </div>
       </div>
     </nav>
   );
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white">
+    // admin-root lets globals.css theme the <body> too, so overscroll doesn't
+    // reveal the splash page's black background in light mode.
+    <div className="admin-root min-h-screen bg-surface text-ink">
       <AudienceDrawer
         open={!!audience}
         onClose={() => setAudience(null)}
@@ -408,21 +495,28 @@ export default function AdminDashboard() {
       />
 
       {/* Mobile top bar */}
-      <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 lg:hidden">
+      <div className="flex items-center justify-between border-b border-ink/10 px-4 py-3 lg:hidden">
         <button onClick={() => setNavOpen(true)} className={btn} aria-label="Open navigation">
           ☰ Menu
         </button>
         <span className="bns-heading text-sm xl:text-base">{title}</span>
-        <button onClick={downloadCsv} className={btn} disabled={!tableRows.length}>
-          ↓ CSV
-        </button>
+        {/* Customers exports from inside its own view, and manage-stores has
+            no list at all — a CSV button on either would export the hidden
+            visit log, still narrowed by whatever chip was last selected. */}
+        {view === "customers" || view === "manage-stores" ? (
+          <span className="w-16" />
+        ) : (
+          <button onClick={downloadCsv} className={btn} disabled={!tableRows.length}>
+            ↓ CSV
+          </button>
+        )}
       </div>
 
       <div className="flex">
         {/* Desktop sidebar */}
         {/* Sidebar: ~1/6 of the viewport, clamped so it stays usable on very
             narrow laptops and doesn't sprawl on ultra-wide displays. */}
-        <aside className="sticky top-0 hidden h-screen w-1/6 min-w-[200px] max-w-[300px] shrink-0 border-r border-white/10 bg-white/[0.03] lg:block">
+        <aside className="sticky top-0 hidden h-screen w-1/6 min-w-[200px] max-w-[300px] shrink-0 border-r border-ink/10 bg-ink/[0.03] lg:block">
           {sidebar}
         </aside>
 
@@ -434,7 +528,7 @@ export default function AdminDashboard() {
               onClick={() => setNavOpen(false)}
               aria-hidden
             />
-            <aside className="absolute left-0 top-0 h-full w-64 border-r border-white/10 bg-neutral-900">
+            <aside className="absolute left-0 top-0 h-full w-64 border-r border-ink/10 bg-panel">
               {sidebar}
             </aside>
           </div>
@@ -452,15 +546,17 @@ export default function AdminDashboard() {
             <div className="mb-6 hidden items-center justify-between gap-3 lg:flex">
               <div>
                 <h1 className="bns-heading text-2xl xl:text-3xl 2xl:text-4xl">{title}</h1>
-                <p className="text-sm xl:text-base text-white/50">
+                <p className="text-sm xl:text-base text-ink/50">
                   {loading
                     ? "Loading…"
+                    : view === "customers"
+                    ? `${roster.length} people on record`
                     : focus === "all"
                     ? `${filtered.length} visits shown`
                     : `${tableRows.length} of ${filtered.length} visits shown`}
                   {!loading && dataSource.source === "clean" && (
                     <span
-                      className="ml-2 rounded bg-emerald-500/15 px-2 py-0.5 text-[11px] xl:text-xs text-emerald-300"
+                      className="ml-2 rounded bg-emerald-500/15 px-2 py-0.5 text-[11px] xl:text-xs text-good"
                       title={
                         dataSource.cleanedAt
                           ? `Duplicates and test rows removed, store backfilled. Last cleaned ${formatDateTime(dataSource.cleanedAt)}`
@@ -472,46 +568,48 @@ export default function AdminDashboard() {
                   )}
                 </p>
               </div>
-              <button onClick={downloadCsv} className={btn} disabled={!tableRows.length}>
-                ↓ Download CSV
-              </button>
+              {view !== "customers" && (
+                <button onClick={downloadCsv} className={btn} disabled={!tableRows.length}>
+                  ↓ Download CSV
+                </button>
+              )}
             </div>
 
             {loadError && (
-              <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm xl:text-base text-red-300">
+              <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm xl:text-base text-bad">
                 {loadError}
               </div>
             )}
 
             {/* Filters */}
-            <div className="mb-6 rounded-xl border border-white/10 bg-white/5 p-4">
+            <div className="mb-6 rounded-xl border border-ink/10 bg-ink/5 p-4">
               <div className="grid gap-3 sm:grid-cols-3">
                 <div>
-                  <label className="mb-1 block text-xs xl:text-sm text-white/50">From</label>
+                  <label className="mb-1 block text-xs xl:text-sm text-ink/50">From</label>
                   <input
                     type="date"
                     value={from}
                     onChange={(e) => setFrom(e.target.value)}
-                    className="w-full rounded-lg border border-white/15 bg-neutral-900 px-3 py-2 text-sm xl:text-base text-white outline-none focus:border-white/50"
+                    className="w-full rounded-lg border border-ink/15 bg-panel px-3 py-2 text-sm xl:text-base text-ink outline-none focus:border-ink/50"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs xl:text-sm text-white/50">To</label>
+                  <label className="mb-1 block text-xs xl:text-sm text-ink/50">To</label>
                   <input
                     type="date"
                     value={to}
                     onChange={(e) => setTo(e.target.value)}
-                    className="w-full rounded-lg border border-white/15 bg-neutral-900 px-3 py-2 text-sm xl:text-base text-white outline-none focus:border-white/50"
+                    className="w-full rounded-lg border border-ink/15 bg-panel px-3 py-2 text-sm xl:text-base text-ink outline-none focus:border-ink/50"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs xl:text-sm text-white/50">Search</label>
+                  <label className="mb-1 block text-xs xl:text-sm text-ink/50">Search</label>
                   <input
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Email, name, phone, MAC"
-                    className="w-full rounded-lg border border-white/15 bg-neutral-900 px-3 py-2 text-sm xl:text-base text-white placeholder-white/30 outline-none focus:border-white/50"
+                    placeholder={view === "customers" ? "Name, email, phone" : "Email, name, phone, MAC"}
+                    className="w-full rounded-lg border border-ink/15 bg-panel px-3 py-2 text-sm xl:text-base text-ink placeholder-ink/30 outline-none focus:border-ink/50"
                   />
                 </div>
               </div>
@@ -537,21 +635,22 @@ export default function AdminDashboard() {
                 >
                   All time
                 </button>
-                <label className="ml-auto flex cursor-pointer items-center gap-2 text-xs xl:text-sm text-white/70">
+                <label className="ml-auto flex cursor-pointer items-center gap-2 text-xs xl:text-sm text-ink/70">
                   <input
                     type="checkbox"
                     checked={onlyOptedIn}
                     onChange={(e) => setOnlyOptedIn(e.target.checked)}
-                    className="h-4 w-4 accent-white"
+                    className="h-4 w-4 accent-ink"
                   />
                   Marketing opt-ins only
                 </label>
               </div>
 
-              {/* Targeting — narrows the list to a group worth acting on */}
-              {view !== "insights" && (
-                <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/10 pt-3">
-                  <span className="text-xs xl:text-sm text-white/40">Show:</span>
+              {/* Targeting — narrows the visit log to a group worth acting on.
+                  Customers has its own controls, Insights is chart-led. */}
+              {view !== "insights" && view !== "customers" && (
+                <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink/10 pt-3">
+                  <span className="text-xs xl:text-sm text-ink/40">Show:</span>
                   {[
                     { key: "all", label: "Everyone", count: enriched.length },
                     { key: "birthday", label: "Birthday within 30 days", count: focusCounts.birthday },
@@ -564,12 +663,12 @@ export default function AdminDashboard() {
                       aria-pressed={focus === c.key}
                       className={`rounded-lg border px-3 py-1.5 text-xs xl:text-sm font-semibold transition ${
                         focus === c.key
-                          ? "border-white/60 bg-white text-neutral-900"
-                          : "border-white/15 bg-white/5 text-white/70 hover:bg-white/10"
+                          ? "border-ink/60 bg-ink text-surface"
+                          : "border-ink/15 bg-ink/5 text-ink/70 hover:bg-ink/10"
                       }`}
                     >
                       {c.label}
-                      <span className={focus === c.key ? "ml-1.5 text-neutral-500" : "ml-1.5 text-white/40"}>
+                      <span className={focus === c.key ? "ml-1.5 text-surface/60" : "ml-1.5 text-ink/40"}>
                         {c.count}
                       </span>
                     </button>
@@ -606,7 +705,16 @@ export default function AdminDashboard() {
                 guestIndex={guestIndex}
                 onShowAudience={setAudience}
               />
-            ) : view !== "customers" ? (
+            ) : view === "customers" ? (
+              <CustomersView
+                roster={roster}
+                periodKeys={periodKeys}
+                periodLabel={periodLabel}
+                onlyOptedIn={onlyOptedIn}
+                search={search}
+                onExport={downloadCustomersCsv}
+              />
+            ) : (
               <>
                 {/* Who to contact this week — the most actionable panel */}
                 {!isStoreView && (
@@ -615,7 +723,7 @@ export default function AdminDashboard() {
                     title="Who to contact this week"
                     note="Everyone on record, grouped by how long since their last visit. Counts are all-time, not limited by the date filter."
                     right={
-                      <span className="text-xs xl:text-sm text-white/40">
+                      <span className="text-xs xl:text-sm text-ink/40">
                         {reach.mailable} contactable of {reach.guests}
                       </span>
                     }
@@ -634,19 +742,19 @@ export default function AdminDashboard() {
                           className={`rounded-lg border p-3 text-left transition hover:brightness-125 ${
                             s.key === "cooling"
                               ? "border-emerald-500/40 bg-emerald-500/10"
-                              : "border-white/10 bg-white/5"
+                              : "border-ink/10 bg-ink/5"
                           }`}
                         >
                           <div className="flex items-baseline justify-between">
-                            <p className="text-sm xl:text-base font-semibold text-white">{s.label}</p>
-                            <p className="text-lg xl:text-xl font-bold text-white">{s.total}</p>
+                            <p className="text-sm xl:text-base font-semibold text-ink">{s.label}</p>
+                            <p className="text-lg xl:text-xl font-bold text-ink">{s.total}</p>
                           </div>
-                          <p className="mt-0.5 text-xs xl:text-sm text-white/40">{s.desc}</p>
-                          <p className="mt-2 text-xs xl:text-sm text-white/60">{s.action}</p>
-                          <p className="mt-1 text-[11px] xl:text-xs text-white/40">
+                          <p className="mt-0.5 text-xs xl:text-sm text-ink/40">{s.desc}</p>
+                          <p className="mt-2 text-xs xl:text-sm text-ink/60">{s.action}</p>
+                          <p className="mt-1 text-[11px] xl:text-xs text-ink/40">
                             {s.contactable} can be emailed
                           </p>
-                          <p className="mt-2 text-[11px] xl:text-xs font-semibold text-white/70">
+                          <p className="mt-2 text-[11px] xl:text-xs font-semibold text-ink/70">
                             View list →
                           </p>
                         </button>
@@ -699,13 +807,18 @@ export default function AdminDashboard() {
                   )}
                 </div>
               </>
-            ) : null}
+            )}
 
-            {/* Table — Insights is chart-led, so the raw list is hidden there */}
-            <div className={`overflow-hidden rounded-xl border border-white/10 bg-white/5 ${view === "insights" ? "hidden" : ""}`}>
+            {/* Visit log. Insights is chart-led and Customers is person-led,
+                so neither shows it. */}
+            <div
+              className={`overflow-hidden rounded-xl border border-ink/10 bg-ink/5 ${
+                view === "insights" || view === "customers" ? "hidden" : ""
+              }`}
+            >
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[900px] text-left text-sm xl:text-base">
-                  <thead className="bg-white/5 text-xs xl:text-sm uppercase tracking-wide text-white/50">
+                  <thead className="bg-ink/5 text-xs xl:text-sm uppercase tracking-wide text-ink/50">
                     <tr>
                       <th className="px-3 py-3">Visit</th>
                       <th className="px-3 py-3">Name</th>
@@ -719,16 +832,16 @@ export default function AdminDashboard() {
                       <th className="px-3 py-3">Offers</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/5">
+                  <tbody className="divide-y divide-ink/5">
                     {tableRows.slice(0, 300).map((e, i) => (
-                      <tr key={`${e.dateKey}-${e.mac}-${i}`} className="hover:bg-white/5">
-                        <td className="whitespace-nowrap px-3 py-2.5 text-white/80">
+                      <tr key={`${e.dateKey}-${e.mac}-${i}`} className="hover:bg-ink/5">
+                        <td className="whitespace-nowrap px-3 py-2.5 text-ink/80">
                           {formatDateTime(e.timestamp)}
                           {e.sessions > 1 && (
-                            <span className="ml-1 text-xs xl:text-sm text-white/40">×{e.sessions}</span>
+                            <span className="ml-1 text-xs xl:text-sm text-ink/40">×{e.sessions}</span>
                           )}
                         </td>
-                        <td className="px-3 py-2.5 text-white/80">{e.firstName || "—"}</td>
+                        <td className="px-3 py-2.5 text-ink/80">{e.firstName || "—"}</td>
                         <td className="whitespace-nowrap px-3 py-2.5">
                           <span
                             className={`rounded px-2 py-0.5 text-xs xl:text-sm font-semibold ${TIER_STYLE[e.tier.tone]}`}
@@ -738,16 +851,16 @@ export default function AdminDashboard() {
                           </span>
                         </td>
                         <td
-                          className="whitespace-nowrap px-3 py-2.5 text-white/80"
+                          className="whitespace-nowrap px-3 py-2.5 text-ink/80"
                           title={`This was visit number ${e.nth}`}
                         >
                           {e.visits}
                         </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-white/70">
-                          {birthdayLabel(e.birthday) || <span className="text-white/25">—</span>}
+                        <td className="whitespace-nowrap px-3 py-2.5 text-ink/70">
+                          {birthdayLabel(e.birthday) || <span className="text-ink/25">—</span>}
                           {e.birthdayIn !== null && e.birthdayIn <= 30 && (
                             <span
-                              className="ml-1.5 rounded bg-amber-400/20 px-1.5 py-0.5 text-[11px] xl:text-xs font-semibold text-amber-200"
+                              className="ml-1.5 rounded bg-amber-400/20 px-1.5 py-0.5 text-[11px] xl:text-xs font-semibold text-warn"
                               title="Worth a birthday offer while it's still useful"
                             >
                               {e.birthdayIn === 0
@@ -759,7 +872,7 @@ export default function AdminDashboard() {
                           )}
                         </td>
                         <td
-                          className="whitespace-nowrap px-3 py-2.5 text-white/80"
+                          className="whitespace-nowrap px-3 py-2.5 text-ink/80"
                           title={
                             e.lastDisconnected
                               ? `${formatDateTime(e.timestamp)} → ${formatDateTime(e.lastDisconnected)}`
@@ -768,18 +881,18 @@ export default function AdminDashboard() {
                         >
                           {e.totalMinutes ? minutesToLabel(e.totalMinutes) : "—"}
                         </td>
-                        <td className="px-3 py-2.5 text-white/60">
+                        <td className="px-3 py-2.5 text-ink/60">
                           {e.email ? (
-                            <a href={`mailto:${e.email}`} className="hover:text-white hover:underline">
+                            <a href={`mailto:${e.email}`} className="hover:text-ink hover:underline">
                               {e.email}
                             </a>
                           ) : (
                             "—"
                           )}
                         </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-white/60">
+                        <td className="whitespace-nowrap px-3 py-2.5 text-ink/60">
                           {e.phone ? (
-                            <a href={`tel:${e.phone}`} className="hover:text-white hover:underline">
+                            <a href={`tel:${e.phone}`} className="hover:text-ink hover:underline">
                               {e.phone}
                             </a>
                           ) : (
@@ -787,7 +900,7 @@ export default function AdminDashboard() {
                           )}
                         </td>
                         {!isStoreView && (
-                          <td className="whitespace-nowrap px-3 py-2.5 text-white/60">
+                          <td className="whitespace-nowrap px-3 py-2.5 text-ink/60">
                             {e.branch || "Unknown"}
                           </td>
                         )}
@@ -795,8 +908,8 @@ export default function AdminDashboard() {
                           <span
                             className={`rounded px-2 py-0.5 text-xs xl:text-sm font-semibold ${
                               (e.promo || "").toLowerCase() === "yes"
-                                ? "bg-emerald-500/20 text-emerald-300"
-                                : "bg-white/10 text-white/50"
+                                ? "bg-emerald-500/20 text-good"
+                                : "bg-ink/10 text-ink/50"
                             }`}
                           >
                             {e.promo || "—"}
@@ -806,7 +919,7 @@ export default function AdminDashboard() {
                     ))}
                     {!tableRows.length && !loading && (
                       <tr>
-                        <td colSpan={isStoreView ? 9 : 10} className="px-3 py-10 text-center text-white/40">
+                        <td colSpan={isStoreView ? 9 : 10} className="px-3 py-10 text-center text-ink/40">
                           {focus === "all"
                             ? "No entries for these filters."
                             : "Nobody in this group for the selected dates — try widening the date range."}
@@ -817,15 +930,19 @@ export default function AdminDashboard() {
                 </table>
               </div>
               {tableRows.length > 300 && (
-                <p className="border-t border-white/10 px-3 py-2 text-xs xl:text-sm text-white/40">
+                <p className="border-t border-ink/10 px-3 py-2 text-xs xl:text-sm text-ink/40">
                   Showing first 300 of {tableRows.length}. Download the CSV for the full list.
                 </p>
               )}
             </div>
 
-            <p className="mt-6 text-center text-xs xl:text-sm text-white/30">
-              One row per device per day — repeat connections that day are merged.
-            </p>
+            {/* Explains the visit log only — Customers and Insights have their
+                own notes, and two contradicting footnotes read as a bug. */}
+            {view !== "insights" && view !== "customers" && (
+              <p className="mt-6 text-center text-xs xl:text-sm text-ink/30">
+                One row per device per day — repeat connections that day are merged.
+              </p>
+            )}
           </div>
           )}
         </main>

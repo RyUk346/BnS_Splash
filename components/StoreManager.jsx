@@ -5,19 +5,19 @@ import { useEffect, useState } from "react";
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH || "";
 
 const btn =
-  "rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs xl:text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-40";
+  "rounded-lg border border-ink/15 bg-ink/5 px-3 py-2 text-xs xl:text-sm font-semibold text-ink/80 transition hover:bg-ink/10 disabled:opacity-40";
 const btnPrimary =
-  "rounded-lg bg-white px-4 py-2 text-xs xl:text-sm font-semibold text-neutral-900 transition hover:bg-white/90 disabled:opacity-40";
+  "rounded-lg bg-ink px-4 py-2 text-xs xl:text-sm font-semibold text-surface transition hover:bg-ink/90 disabled:opacity-40";
 const input =
-  "w-full rounded-lg border border-white/15 bg-neutral-900 px-3 py-2 text-sm xl:text-base text-white placeholder-white/30 outline-none focus:border-white/50";
+  "w-full rounded-lg border border-ink/15 bg-panel px-3 py-2 text-sm xl:text-base text-ink placeholder-ink/30 outline-none focus:border-ink/50";
 
 /** Small coloured status pill. */
 function Pill({ tone, children }) {
   const tones = {
-    ok: "bg-emerald-500/20 text-emerald-300",
-    bad: "bg-red-500/20 text-red-300",
-    idle: "bg-white/10 text-white/50",
-    busy: "bg-amber-500/20 text-amber-300",
+    ok: "bg-emerald-500/20 text-good",
+    bad: "bg-red-500/20 text-bad",
+    idle: "bg-ink/10 text-ink/50",
+    busy: "bg-amber-500/20 text-warn",
   };
   return (
     <span className={`rounded px-2 py-0.5 text-[11px] font-semibold ${tones[tone] || tones.idle}`}>
@@ -187,7 +187,7 @@ export default function StoreManager() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="bns-heading text-2xl xl:text-3xl 2xl:text-4xl">Stores</h1>
-          <p className="text-sm xl:text-base text-white/50">
+          <p className="text-sm xl:text-base text-ink/50">
             {loading ? "Loading…" : `${stores.length} configured`}
           </p>
         </div>
@@ -202,17 +202,17 @@ export default function StoreManager() {
       </div>
 
       {error && (
-        <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm xl:text-base text-red-300">
+        <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm xl:text-base text-bad">
           {error}
         </div>
       )}
       {notice && (
-        <div className="mb-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm xl:text-base text-emerald-300">
+        <div className="mb-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm xl:text-base text-good">
           {notice}
         </div>
       )}
       {!fileBacked && !loading && (
-        <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm xl:text-base text-amber-200">
+        <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm xl:text-base text-warn">
           These stores are currently read from the server&apos;s <code>.env</code> file. Adding or
           editing one here moves the list into <code>data/stores.json</code>, after which changes
           take effect instantly without touching the server.
@@ -221,19 +221,19 @@ export default function StoreManager() {
 
       {/* Add store panel */}
       {adding && (
-        <div className="mb-6 rounded-xl border border-white/15 bg-white/5 p-5">
+        <div className="mb-6 rounded-xl border border-ink/15 bg-ink/5 p-5">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm xl:text-base font-semibold text-white/90">Add a store</h2>
-            <button onClick={() => setAdding(false)} className="text-xs xl:text-sm text-white/40 hover:text-white">
+            <h2 className="text-sm xl:text-base font-semibold text-ink/90">Add a store</h2>
+            <button onClick={() => setAdding(false)} className="text-xs xl:text-sm text-ink/40 hover:text-ink">
               ✕ Cancel
             </button>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs xl:text-sm text-white/50">
+              <label className="mb-1 block text-xs xl:text-sm text-ink/50">
                 UniFi console
-                {discovering && <span className="ml-2 text-amber-300">discovering…</span>}
+                {discovering && <span className="ml-2 text-warn">discovering…</span>}
               </label>
 
               {consoles === null && !discovering && (
@@ -264,7 +264,7 @@ export default function StoreManager() {
                       </option>
                     ))}
                   </select>
-                  <p className="mt-1 text-[11px] text-white/40">
+                  <p className="mt-1 text-[11px] text-ink/40">
                     {consoles.length} console{consoles.length === 1 ? "" : "s"} on the account,{" "}
                     {consoles.length - available.length} already added.
                   </p>
@@ -272,7 +272,7 @@ export default function StoreManager() {
               )}
 
               <details className="mt-3">
-                <summary className="cursor-pointer text-xs xl:text-sm text-white/40 hover:text-white/70">
+                <summary className="cursor-pointer text-xs xl:text-sm text-ink/40 hover:text-ink/70">
                   Or paste a console ID manually
                 </summary>
                 <input
@@ -286,7 +286,7 @@ export default function StoreManager() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs xl:text-sm text-white/50">Store name</label>
+              <label className="mb-1 block text-xs xl:text-sm text-ink/50">Store name</label>
               <input
                 type="text"
                 value={newLabel}
@@ -294,7 +294,7 @@ export default function StoreManager() {
                 placeholder="e.g. BnS Merry Hill"
                 className={input}
               />
-              <p className="mt-1 text-[11px] text-white/40">
+              <p className="mt-1 text-[11px] text-ink/40">
                 Shown in the Google Sheet&apos;s Branch column and in this sidebar.
               </p>
 
@@ -308,7 +308,7 @@ export default function StoreManager() {
             </div>
           </div>
 
-          <p className="mt-4 border-t border-white/10 pt-3 text-[11px] text-white/40">
+          <p className="mt-4 border-t border-ink/10 pt-3 text-[11px] text-ink/40">
             Reminder: the router itself still needs its hotspot configured in UniFi (guest WiFi set
             to <strong>Hotspot</strong>, External Portal Server, and the pre-authorisation
             allowance). See the &ldquo;Adding a Store&rdquo; guide.
@@ -317,10 +317,10 @@ export default function StoreManager() {
       )}
 
       {/* Store list */}
-      <div className="overflow-hidden rounded-xl border border-white/10 bg-white/5">
+      <div className="overflow-hidden rounded-xl border border-ink/10 bg-ink/5">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] text-left text-sm xl:text-base">
-            <thead className="bg-white/5 text-xs xl:text-sm uppercase tracking-wide text-white/50">
+            <thead className="bg-ink/5 text-xs xl:text-sm uppercase tracking-wide text-ink/50">
               <tr>
                 <th className="px-4 py-3">Store</th>
                 <th className="px-4 py-3">Console ID</th>
@@ -328,9 +328,9 @@ export default function StoreManager() {
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5">
+            <tbody className="divide-y divide-ink/5">
               {stores.map((s) => (
-                <tr key={s.id} className="hover:bg-white/5">
+                <tr key={s.id} className="hover:bg-ink/5">
                   <td className="px-4 py-3">
                     {editing === s.id ? (
                       <div className="flex gap-2">
@@ -348,11 +348,11 @@ export default function StoreManager() {
                         </button>
                       </div>
                     ) : (
-                      <span className="font-semibold text-white">{s.label}</span>
+                      <span className="font-semibold text-ink">{s.label}</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <span className="font-mono text-[11px] text-white/40" title={s.id}>
+                    <span className="font-mono text-[11px] text-ink/40" title={s.id}>
                       {s.id.slice(0, 14)}…{s.id.slice(-10)}
                     </span>
                   </td>
@@ -379,7 +379,7 @@ export default function StoreManager() {
                       </button>
                       <button
                         onClick={() => remove(s)}
-                        className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs xl:text-sm font-semibold text-red-300 transition hover:bg-red-500/20"
+                        className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs xl:text-sm font-semibold text-bad transition hover:bg-red-500/20"
                       >
                         Remove
                       </button>
@@ -389,7 +389,7 @@ export default function StoreManager() {
               ))}
               {!stores.length && !loading && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-10 text-center text-white/40">
+                  <td colSpan={4} className="px-4 py-10 text-center text-ink/40">
                     No stores configured yet.
                   </td>
                 </tr>
@@ -399,7 +399,7 @@ export default function StoreManager() {
         </div>
       </div>
 
-      <p className="mt-4 text-xs xl:text-sm text-white/30">
+      <p className="mt-4 text-xs xl:text-sm text-ink/30">
         Changes take effect immediately — no server restart or redeploy required.
       </p>
     </div>

@@ -116,7 +116,7 @@ export default function InsightsView({ entries, rawRows, guestIndex, onShowAudie
       >
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-left text-sm xl:text-base">
-            <thead className="text-xs xl:text-sm uppercase tracking-wide text-white/50">
+            <thead className="text-xs xl:text-sm uppercase tracking-wide text-ink/50">
               <tr>
                 <th className="py-2 pr-3">Period</th>
                 <th className="py-2 pr-3">Visits</th>
@@ -125,23 +125,23 @@ export default function InsightsView({ entries, rawRows, guestIndex, onShowAudie
                 <th className="py-2 pr-3">Came back</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5">
+            <tbody className="divide-y divide-ink/5">
               {dayparts
                 .filter((d) => d.visits > 0)
                 .map((d) => (
                   <tr
                     key={d.key}
                     onClick={onShowAudience ? () => openDaypart(d) : undefined}
-                    className={onShowAudience ? "cursor-pointer hover:bg-white/5" : ""}
+                    className={onShowAudience ? "cursor-pointer hover:bg-ink/5" : ""}
                     title={onShowAudience ? "Show guests who visited in this period" : undefined}
                   >
-                    <td className="py-2.5 pr-3 font-medium text-white/90">{d.label}</td>
-                    <td className="py-2.5 pr-3 text-white/70">
+                    <td className="py-2.5 pr-3 font-medium text-ink/90">{d.label}</td>
+                    <td className="py-2.5 pr-3 text-ink/70">
                       {d.visits}
-                      <span className="ml-1 text-xs text-white/30">{d.share.toFixed(0)}%</span>
+                      <span className="ml-1 text-xs text-ink/30">{d.share.toFixed(0)}%</span>
                     </td>
                     <td className="py-2.5 pr-3">
-                      <span className={d.index >= 100 ? "text-white" : "text-white/50"}>{d.index}</span>
+                      <span className={d.index >= 100 ? "text-ink" : "text-ink/50"}>{d.index}</span>
                     </td>
                     <td className="py-2.5 pr-3">
                       <Figure value={d.optInRate} n={d.optInAnswered} suffix="%" />
@@ -167,7 +167,7 @@ export default function InsightsView({ entries, rawRows, guestIndex, onShowAudie
           </div>
         )}
         {!stickiest && (
-          <p className="mt-3 text-xs xl:text-sm text-white/40">
+          <p className="mt-3 text-xs xl:text-sm text-ink/40">
             Return rates need at least {MIN_SAMPLE} first visits in a period before they mean
             anything. Keep collecting.
           </p>
@@ -234,7 +234,7 @@ export default function InsightsView({ entries, rawRows, guestIndex, onShowAudie
         >
           <HBars data={dwell.buckets} />
           {dwell.n >= MIN_SAMPLE && (
-            <p className="mt-3 text-xs xl:text-sm text-white/40">
+            <p className="mt-3 text-xs xl:text-sm text-ink/40">
               {dwell.quickPct.toFixed(0)}% stay under 20 minutes (likely takeaway),{" "}
               {(100 - dwell.quickPct).toFixed(0)}% stay longer (likely eating in).
             </p>
@@ -284,14 +284,14 @@ export default function InsightsView({ entries, rawRows, guestIndex, onShowAudie
                   className={`rounded-lg border p-3 text-center transition disabled:cursor-default ${
                     urgent
                       ? "border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20"
-                      : "border-white/10 bg-white/5 hover:bg-white/10 disabled:hover:bg-white/5"
+                      : "border-ink/10 bg-ink/5 hover:bg-ink/10 disabled:hover:bg-ink/5"
                   }`}
                 >
-                  <p className={`text-xs xl:text-sm ${urgent ? "text-emerald-300/80" : "text-white/40"}`}>
+                  <p className={`text-xs xl:text-sm ${urgent ? "text-good/80" : "text-ink/40"}`}>
                     {c.label}
                   </p>
-                  <p className="text-lg xl:text-xl font-bold text-white">{c.guests.length}</p>
-                  <p className="text-[10px] xl:text-xs text-white/40">
+                  <p className="text-lg xl:text-xl font-bold text-ink">{c.guests.length}</p>
+                  <p className="text-[10px] xl:text-xs text-ink/40">
                     {c.contactable} contactable
                   </p>
                 </button>
@@ -299,7 +299,7 @@ export default function InsightsView({ entries, rawRows, guestIndex, onShowAudie
             })}
           </div>
           {upcoming[0].guests.length > 0 && (
-            <p className="mt-3 text-xs xl:text-sm text-emerald-300">
+            <p className="mt-3 text-xs xl:text-sm text-good">
               {upcoming[0].guests.length} birthday
               {upcoming[0].guests.length === 1 ? "" : "s"} today — worth a message this morning.
             </p>
@@ -311,7 +311,7 @@ export default function InsightsView({ entries, rawRows, guestIndex, onShowAudie
       <Panel title="Store comparison" note="Same period, side by side.">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] text-left text-sm xl:text-base">
-            <thead className="text-xs xl:text-sm uppercase tracking-wide text-white/50">
+            <thead className="text-xs xl:text-sm uppercase tracking-wide text-ink/50">
               <tr>
                 <th className="py-2 pr-3">Store</th>
                 <th className="py-2 pr-3">Visits</th>
@@ -322,15 +322,15 @@ export default function InsightsView({ entries, rawRows, guestIndex, onShowAudie
                 <th className="py-2 pr-3">Repeat share</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5">
+            <tbody className="divide-y divide-ink/5">
               {sites.map((s) => (
                 <tr key={s.site}>
-                  <td className="py-2.5 pr-3 font-medium text-white/90">{s.site}</td>
-                  <td className="py-2.5 pr-3 text-white/70">{s.visits}</td>
-                  <td className="py-2.5 pr-3 text-white/70">{s.guests}</td>
-                  <td className="py-2.5 pr-3 text-white/70">{s.perDay.toFixed(1)}</td>
+                  <td className="py-2.5 pr-3 font-medium text-ink/90">{s.site}</td>
+                  <td className="py-2.5 pr-3 text-ink/70">{s.visits}</td>
+                  <td className="py-2.5 pr-3 text-ink/70">{s.guests}</td>
+                  <td className="py-2.5 pr-3 text-ink/70">{s.perDay.toFixed(1)}</td>
                   <td className="py-2.5 pr-3"><Figure value={s.optInRate} n={s.visits} suffix="%" /></td>
-                  <td className="py-2.5 pr-3 text-white/70">
+                  <td className="py-2.5 pr-3 text-ink/70">
                     {s.medianDwell ? minutesToLabel(s.medianDwell) : "—"}
                   </td>
                   <td className="py-2.5 pr-3"><Figure value={s.returnShare} n={s.visits} suffix="%" /></td>
@@ -392,8 +392,8 @@ export default function InsightsView({ entries, rawRows, guestIndex, onShowAudie
         )}
       </Panel>
 
-      <p className="pb-2 text-center text-xs xl:text-sm text-white/30">
-        Figures marked <span className="text-amber-300/70">low n</span> are based on too few
+      <p className="pb-2 text-center text-xs xl:text-sm text-ink/30">
+        Figures marked <span className="text-warn/70">low n</span> are based on too few
         visits to act on. Guest counts are WiFi users only — a subset of footfall, so read rates
         rather than totals.
       </p>
