@@ -34,6 +34,10 @@ import {
 
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH || "";
 
+/** Above this many stores, the sidebar offers a filter box instead of a list
+ *  you scroll by eye. Roughly where a glance stops being enough. */
+const STORE_FILTER_THRESHOLD = 8;
+
 const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** "14/03/1990" → "14 Mar". Older records have no year, hence the optional group. */
@@ -133,6 +137,7 @@ export default function AdminDashboard() {
   // Navigation: "overview" | "customers" | a store name
   const [view, setView] = useState("overview");
   const [storesOpen, setStoresOpen] = useState(true);
+  const [storeFilter, setStoreFilter] = useState("");
   const [navOpen, setNavOpen] = useState(false); // mobile drawer
 
   // Default to the last 7 days — the window an owner actually acts on.
@@ -182,6 +187,14 @@ export default function AdminDashboard() {
     const set = new Set(deduped.map((e) => e.branch || "Unknown"));
     return Array.from(set).sort();
   }, [deduped]);
+
+  // The store currently being viewed always stays listed, even if the filter
+  // text excludes it — otherwise the active item vanishes from the nav.
+  const visibleBranches = useMemo(() => {
+    const q = storeFilter.trim().toLowerCase();
+    if (!q) return branches;
+    return branches.filter((b) => b.toLowerCase().includes(q) || b === view);
+  }, [branches, storeFilter, view]);
 
   const FIXED_VIEWS = ["overview", "insights", "customers", "manage-stores"];
   const isStoreView = !FIXED_VIEWS.includes(view);
@@ -389,9 +402,24 @@ export default function AdminDashboard() {
 
   /* Sidebar --------------------------------------------------------- */
 
+  /*
+   * Three fixed bands with one scrolling middle:
+   *
+   *   logo + primary nav   — never moves
+   *   store list           — the only part that scrolls
+   *   actions + credit     — pinned to the bottom, always reachable
+   *
+   * The store list is the one section whose length isn't known in advance, so
+   * it is the only thing allowed to overflow. Sign out and Refresh stay on
+   * screen no matter how many stores get added.
+   */
   const sidebar = (
-    <nav className="flex h-full flex-col gap-1 p-4">
-      <div className="mb-5 px-1">
+    // overflow-y-auto is a last-resort fallback, not the normal path: above
+    // ~460px tall nothing overflows and the action buttons stay pinned. On a
+    // very short window it lets you scroll to them rather than losing them.
+    <nav className="flex h-full min-h-0 flex-col overflow-y-auto">
+      {/* Brand */}
+      <div className="shrink-0 px-4 pb-4 pt-4 [@media(max-height:700px)]:pb-2 [@media(max-height:700px)]:pt-2">
         {/* Plain <img>, not next/image: the logo is an SVG, so there is
             nothing for the image optimiser to do, and Next would need
             dangerouslyAllowSVG to serve it through /_next/image. */}
@@ -400,55 +428,96 @@ export default function AdminDashboard() {
           alt="Burger & Sauce"
           width={567}
           height={97}
-          className="logo-white-asset h-auto w-full max-w-[190px]"
+          className="logo-white-asset h-auto w-full max-w-[190px] [@media(max-height:700px)]:max-w-[140px]"
         />
-        <p className="mt-2 text-xs xl:text-sm text-ink/40">Guest WiFi Admin</p>
+        <p className="mt-2 text-xs xl:text-sm text-ink/40 [@media(max-height:700px)]:hidden">
+          Guest WiFi Admin
+        </p>
       </div>
 
-      <button onClick={() => go("overview")} className={navItem(view === "overview")}>
-        <span>Overview</span>
-      </button>
+      {/* Primary nav — fixed length, so it sits above the scroll region and
+          stays reachable however long the store list gets. */}
+      <div className="shrink-0 space-y-1 px-4">
+        <button onClick={() => go("overview")} className={navItem(view === "overview")}>
+          <span>Overview</span>
+        </button>
+        <button onClick={() => go("insights")} className={navItem(view === "insights")}>
+          <span>Insights</span>
+        </button>
+        <button onClick={() => go("customers")} className={navItem(view === "customers")}>
+          <span>Customers</span>
+        </button>
+      </div>
 
-      <button onClick={() => go("insights")} className={navItem(view === "insights")}>
-        <span>Insights</span>
-      </button>
-
-      {/* Stores — expandable submenu */}
-      <button
-        onClick={() => setStoresOpen((o) => !o)}
-        className={navItem(false) + " mt-1"}
-        aria-expanded={storesOpen}
-      >
-        <span>Stores</span>
-        <span className="text-xs xl:text-sm text-ink/40">{storesOpen ? "▾" : "▸"}</span>
-      </button>
-      {storesOpen && (
-        <div className="ml-2 mt-0.5 space-y-0.5 border-l border-ink/10 pl-2">
-          {branches.length === 0 && (
-            <p className="px-3 py-2 text-xs xl:text-sm text-ink/30">No stores yet</p>
-          )}
-          {branches.map((b) => (
-            <button key={b} onClick={() => go(b)} className={navItem(view === b)}>
-              <span className="truncate">{b}</span>
-              <span className="ml-2 shrink-0 rounded bg-ink/10 px-1.5 py-0.5 text-[10px] xl:text-xs text-ink/60">
-                {branchCounts.get(b) || 0}
+      {/* Stores — header and footer fixed, the list itself scrolls */}
+      <div className="mt-3 flex min-h-0 flex-1 flex-col px-4">
+        <button
+          onClick={() => setStoresOpen((o) => !o)}
+          className={navItem(false) + " shrink-0"}
+          aria-expanded={storesOpen}
+        >
+          <span>Stores</span>
+          <span className="flex items-center gap-2">
+            {branches.length > 0 && (
+              <span className="rounded bg-ink/10 px-1.5 py-0.5 text-[10px] xl:text-xs text-ink/60">
+                {branches.length}
               </span>
+            )}
+            <span className="text-xs xl:text-sm text-ink/40">{storesOpen ? "▾" : "▸"}</span>
+          </span>
+        </button>
+
+        {storesOpen && (
+          <div className="ml-2 mt-1 flex min-h-0 flex-1 flex-col border-l border-ink/10 pl-2">
+            {/* Once the list is long enough to scroll, scanning it beats
+                scrolling it — so a filter appears rather than always being
+                on screen taking up room. */}
+            {branches.length > STORE_FILTER_THRESHOLD && (
+              <input
+                type="text"
+                value={storeFilter}
+                onChange={(e) => setStoreFilter(e.target.value)}
+                placeholder="Filter stores…"
+                aria-label="Filter stores"
+                className="mb-1.5 w-full shrink-0 rounded-lg border border-ink/15 bg-ink/5 px-3 py-1.5 text-xs xl:text-sm text-ink placeholder-ink/40 outline-none focus:border-ink/50"
+              />
+            )}
+
+            {/* Grows into whatever space is left, but never shrinks below
+                about three rows — a zero-height store list is useless. */}
+            <div className="thin-scroll min-h-[132px] flex-1 space-y-0.5 overflow-y-auto pr-1">
+              {branches.length === 0 && (
+                <p className="px-3 py-2 text-xs xl:text-sm text-ink/30">No stores yet</p>
+              )}
+              {branches.length > 0 && visibleBranches.length === 0 && (
+                <p className="px-3 py-2 text-xs xl:text-sm text-ink/40">
+                  No store matches “{storeFilter}”.
+                </p>
+              )}
+              {visibleBranches.map((b) => (
+                <button key={b} onClick={() => go(b)} className={navItem(view === b)} title={b}>
+                  <span className="truncate">{b}</span>
+                  <span className="ml-2 shrink-0 rounded bg-ink/10 px-1.5 py-0.5 text-[10px] xl:text-xs text-ink/60">
+                    {branchCounts.get(b) || 0}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* Outside the scroll area — you shouldn't have to scroll past
+                every store to reach "add a store". */}
+            <button
+              onClick={() => go("manage-stores")}
+              className={navItem(view === "manage-stores") + " mt-1 shrink-0"}
+            >
+              <span className="text-ink/70">+ Manage stores</span>
             </button>
-          ))}
-          <button
-            onClick={() => go("manage-stores")}
-            className={navItem(view === "manage-stores")}
-          >
-            <span className="text-ink/70">+ Manage stores</span>
-          </button>
-        </div>
-      )}
+          </div>
+        )}
+      </div>
 
-      <button onClick={() => go("customers")} className={navItem(view === "customers") + " mt-1"}>
-        <span>Customers</span>
-      </button>
-
-      <div className="mt-auto space-y-2 pt-4">
+      {/* Actions — pinned, outside every scroll region */}
+      <div className="shrink-0 space-y-2 border-t border-ink/10 p-4">
         <ThemeToggle className="w-full" />
         <button onClick={() => load(true)} className={btn + " w-full"} disabled={loading}>
           ↻ Refresh data
@@ -457,7 +526,11 @@ export default function AdminDashboard() {
           Sign out
         </button>
 
-        <div className="flex flex-col items-center gap-1.5 border-t border-ink/10 pt-4">
+        {/* On a short viewport (a laptop with a small window, a phone in
+            landscape) the fixed bands alone can outgrow the screen. The credit
+            is the one thing here nobody needs, so it's the first to go —
+            Refresh and Sign out stay. */}
+        <div className="flex flex-col items-center gap-1.5 pt-2 [@media(max-height:700px)]:hidden">
           <span className="text-[10px] xl:text-xs uppercase tracking-wider text-ink/30">
             Powered by
           </span>
@@ -516,7 +589,9 @@ export default function AdminDashboard() {
         {/* Desktop sidebar */}
         {/* Sidebar: ~1/6 of the viewport, clamped so it stays usable on very
             narrow laptops and doesn't sprawl on ultra-wide displays. */}
-        <aside className="sticky top-0 hidden h-screen w-1/6 min-w-[200px] max-w-[300px] shrink-0 border-r border-ink/10 bg-ink/[0.03] lg:block">
+        {/* overflow-hidden is what makes the inner store list scroll instead
+            of pushing the sign-out button off the bottom of the screen. */}
+        <aside className="sticky top-0 hidden h-screen w-1/6 min-w-[200px] max-w-[300px] shrink-0 overflow-hidden border-r border-ink/10 bg-ink/[0.03] lg:block">
           {sidebar}
         </aside>
 
@@ -528,7 +603,7 @@ export default function AdminDashboard() {
               onClick={() => setNavOpen(false)}
               aria-hidden
             />
-            <aside className="absolute left-0 top-0 h-full w-64 border-r border-ink/10 bg-panel">
+            <aside className="absolute left-0 top-0 h-full w-64 overflow-hidden border-r border-ink/10 bg-panel">
               {sidebar}
             </aside>
           </div>
