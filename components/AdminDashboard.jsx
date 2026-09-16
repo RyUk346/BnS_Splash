@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import StoreManager from "@/components/StoreManager";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -8,6 +8,7 @@ import InsightsView from "@/components/InsightsView";
 import CustomersView from "@/components/CustomersView";
 import AudienceDrawer from "@/components/AudienceDrawer";
 import { Panel, StatCard, BarChart, HBars, Insight } from "@/components/ui/Charts";
+import { Spinner, DashboardSkeleton, RefreshingBadge } from "@/components/ui/Loading";
 import {
   // aliased: `audience` is also the name of the drawer's state below
   audience as audienceStats,
@@ -80,10 +81,12 @@ function LoginScreen({ onSuccess }) {
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Login failed");
+      // Hands over to the dashboard, which takes over the loading state.
+      // Note: no setBusy(false) on this path — the button stays spinning until
+      // this component unmounts, so there's never an idle-looking moment.
       onSuccess();
     } catch (err) {
       setError(err.message);
-    } finally {
       setBusy(false);
     }
   }
@@ -114,9 +117,10 @@ function LoginScreen({ onSuccess }) {
         <button
           type="submit"
           disabled={busy || !password}
-          className="bns-heading mt-4 w-full rounded-lg bg-ink px-4 py-3 text-surface transition disabled:opacity-40"
+          className="bns-heading mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 py-3 text-surface transition disabled:opacity-40"
         >
-          {busy ? "Checking…" : "Sign in"}
+          {busy && <Spinner className="h-4 w-4" />}
+          {busy ? "Signing in…" : "Sign in"}
         </button>
       </form>
     </div>
@@ -127,8 +131,15 @@ function LoginScreen({ onSuccess }) {
 
 export default function AdminDashboard() {
   const [authed, setAuthed] = useState(false);
+  // The very first request decides whether an existing cookie is still valid.
+  // Until it answers, showing the login form would be wrong for an already
+  // signed-in user, so we show nothing rather than flash the wrong screen.
+  const [booting, setBooting] = useState(true);
   const [rows, setRows] = useState(null);
   const [loading, setLoading] = useState(false);
+  // True only while a refresh the user pressed is running. Background updates
+  // set `loading` but not this, so they don't put anything on screen.
+  const [manualRefresh, setManualRefresh] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [dataSource, setDataSource] = useState({ source: "raw", cleanedAt: "" });
   // { count, oldestAgeMs, maxAttempts } — signups saved on the server but not
@@ -149,31 +160,86 @@ export default function AdminDashboard() {
   const [search, setSearch] = useState("");
   const [onlyOptedIn, setOnlyOptedIn] = useState(false);
 
+  // Follow-up fetch when the server served stale rows while refreshing.
+  const mounted = useRef(true);
+  const chaseTimer = useRef(null);
+  const chaseRef = useRef(0);
+
+  /**
+   * Fetch the guest data.
+   *
+   * Loading does NOT gate `authed` — it used to, which meant the login screen
+   * stayed on screen with an idle button for the entire Apps Script read.
+   * Signing in now shows the dashboard immediately with a skeleton, and this
+   * fills it in. Only a 401 sends you back to the login form.
+   *
+   * `force` bypasses the server's cache and is reserved for the explicit
+   * Refresh button — every other call is happy with a cached view.
+   */
   async function load(force = false) {
     setLoading(true);
+    // `force` only comes from the Refresh button, so it doubles as "the user
+    // is waiting for this" — the difference between showing a spinner and
+    // updating silently.
+    if (force) setManualRefresh(true);
     setLoadError("");
     try {
-      const res = await fetch(`${BASE}/api/admin/data${force ? "?refresh=1" : ""}`);
+      const res = await fetch(`${BASE}/api/admin/data${force ? "?refresh=1" : ""}`, {
+        cache: "no-store",
+      });
       if (res.status === 401) {
         setAuthed(false);
         setRows(null);
         return;
       }
+      // Getting data back at all proves the session is valid, which is what
+      // makes this the same call used to check an existing cookie on load.
+      setAuthed(true);
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Could not load data");
       setRows(data.rows);
-      setDataSource({ source: data.source || "raw", cleanedAt: data.cleanedAt || "" });
+      setDataSource({
+        source: data.source || "raw",
+        cleanedAt: data.cleanedAt || "",
+        stale: !!data.stale,
+        revalidating: !!data.revalidating,
+        ageMs: data.ageMs || 0,
+      });
       setSheetQueue(data.sheetQueue || null);
-      setAuthed(true);
+
+      // The server handed back stale rows while it refreshes behind the
+      // scenes. Come back shortly for the fresh ones rather than making the
+      // user press Refresh.
+      //
+      // Bounded on purpose: if the background refresh keeps failing the cache
+      // stays stale, the server keeps saying "revalidating", and an unbounded
+      // chase would become a 4-second poll loop against a sheet that's
+      // already struggling. Two attempts, then leave it to the user.
+      if (data.revalidating && chaseRef.current < 2) {
+        chaseRef.current += 1;
+        clearTimeout(chaseTimer.current);
+        chaseTimer.current = setTimeout(() => {
+          if (mounted.current) load();
+        }, 4000);
+      } else if (!data.revalidating) {
+        chaseRef.current = 0; // got fresh data — allow chasing again later
+      }
     } catch (err) {
       setLoadError(err.message);
     } finally {
       setLoading(false);
+      setManualRefresh(false);
     }
   }
 
   useEffect(() => {
-    load();
+    // One call does two jobs: it tells us whether a cookie from a previous
+    // visit is still valid, and if so it brings the data with it.
+    load().finally(() => setBooting(false));
+    return () => {
+      mounted.current = false;
+      clearTimeout(chaseTimer.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -386,7 +452,27 @@ export default function AdminDashboard() {
     if (target === "insights") setFocus("all");
   }
 
-  if (!authed) return <LoginScreen onSuccess={() => load(true)} />;
+  // Still checking an existing session — a brief blank beats flashing the
+  // login form at someone who's already signed in.
+  if (booting) {
+    return (
+      <div className="admin-root flex min-h-screen items-center justify-center bg-surface">
+        <Spinner className="h-6 w-6 text-ink/40" label="Loading" />
+      </div>
+    );
+  }
+
+  if (!authed) {
+    return (
+      <LoginScreen
+        onSuccess={() => {
+          // Show the dashboard shell straight away; the data arrives into it.
+          setAuthed(true);
+          load();
+        }}
+      />
+    );
+  }
 
   const btn =
     "rounded-lg border border-ink/15 bg-ink/5 px-3 py-2 text-xs xl:text-sm font-semibold text-ink/80 transition hover:bg-ink/10";
@@ -523,8 +609,15 @@ export default function AdminDashboard() {
       {/* Actions — pinned, outside every scroll region */}
       <div className="shrink-0 space-y-2 border-t border-ink/10 p-4">
         <ThemeToggle className="w-full" />
-        <button onClick={() => load(true)} className={btn + " w-full"} disabled={loading}>
-          ↻ Refresh data
+        <button
+          onClick={() => load(true)}
+          className={btn + " flex w-full items-center justify-center gap-2"}
+          // Disabled during any load so requests can't overlap, but only the
+          // user's own refresh changes how the button looks.
+          disabled={loading}
+        >
+          {manualRefresh ? <Spinner className="h-3.5 w-3.5" /> : <span aria-hidden>↻</span>}
+          {manualRefresh ? "Refreshing…" : "Refresh data"}
         </button>
         <button onClick={logout} className={btn + " w-full"}>
           Sign out
@@ -619,21 +712,50 @@ export default function AdminDashboard() {
             <div className="w-full">
               <StoreManager />
             </div>
+          ) : rows === null && loading ? (
+            /* First load. The shell is already on screen with the sidebar and
+               logo, so this fills the content area with the shape of what's
+               coming rather than a blank panel. */
+            <DashboardSkeleton
+              message="Loading your guest data…"
+              note="Reading from the Google Sheet. This is quick after the first load."
+            />
+          ) : rows === null ? (
+            /* Not loading and no data — the fetch failed. The error banner is
+               rendered below; give them a way out. */
+            <div className="w-full">
+              <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm xl:text-base text-bad">
+                {loadError || "Could not load the guest data."}
+              </div>
+              <button onClick={() => load(true)} className={btn} disabled={loading}>
+                {loading ? "Retrying…" : "↻ Try again"}
+              </button>
+            </div>
           ) : (
           <div className="w-full">
             {/* Header */}
             <div className="mb-6 hidden items-center justify-between gap-3 lg:flex">
               <div>
                 <h1 className="bns-heading text-2xl xl:text-3xl 2xl:text-4xl">{title}</h1>
-                <p className="text-sm xl:text-base text-ink/50">
-                  {loading
-                    ? "Loading…"
-                    : view === "customers"
+                <p className="flex flex-wrap items-center text-sm xl:text-base text-ink/50">
+                  {view === "customers"
                     ? `${roster.length} people on record`
                     : focus === "all"
                     ? `${filtered.length} visits shown`
                     : `${tableRows.length} of ${filtered.length} visits shown`}
-                  {!loading && dataSource.source === "clean" && (
+                  {/* Only for a refresh the user actually asked for. Automatic
+                      background updates stay silent — they happen on most
+                      page loads, and announcing them is just noise. */}
+                  {manualRefresh && <RefreshingBadge />}
+                  {!manualRefresh && dataSource.stale && (
+                    <span
+                      className="ml-2 rounded bg-amber-500/15 px-2 py-0.5 text-[11px] xl:text-xs text-warn"
+                      title="The Google Sheet could not be reached, so these are the last figures we have. Press Refresh to try again."
+                    >
+                      offline copy
+                    </span>
+                  )}
+                  {dataSource.source === "clean" && (
                     <span
                       className="ml-2 rounded bg-emerald-500/15 px-2 py-0.5 text-[11px] xl:text-xs text-good"
                       title={
