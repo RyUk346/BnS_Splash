@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAuthed } from "@/lib/admin-auth";
+import { queueHealth } from "@/lib/sheet-sync";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,15 @@ export async function GET(req) {
     );
   }
 
+  // Read fresh every time, never from the cache: this is the "is anything
+  // missing from the sheet?" signal, and a stale answer would defeat it.
+  let sheetQueue = { count: 0, oldestAgeMs: 0, maxAttempts: 0 };
+  try {
+    sheetQueue = queueHealth();
+  } catch (err) {
+    console.error("Could not read the pending Sheets queue:", err.message);
+  }
+
   const force = new URL(req.url).searchParams.get("refresh") === "1";
   if (!force && cache.rows && Date.now() - cache.at < CACHE_MS) {
     return NextResponse.json({
@@ -29,6 +39,7 @@ export async function GET(req) {
       rows: cache.rows,
       source: cache.source,
       cleanedAt: cache.cleanedAt,
+      sheetQueue,
       cached: true,
     });
   }
@@ -51,12 +62,13 @@ export async function GET(req) {
       rows: cache.rows,
       source: cache.source,
       cleanedAt: cache.cleanedAt,
+      sheetQueue,
     });
   } catch (err) {
     console.error("Admin data fetch failed:", err.message);
     // Serve stale data rather than nothing, if we have any.
     if (cache.rows) {
-      return NextResponse.json({ success: true, rows: cache.rows, stale: true });
+      return NextResponse.json({ success: true, rows: cache.rows, stale: true, sheetQueue });
     }
     return NextResponse.json({ success: false, error: err.message }, { status: 502 });
   }

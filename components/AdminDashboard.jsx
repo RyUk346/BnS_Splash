@@ -131,6 +131,9 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [dataSource, setDataSource] = useState({ source: "raw", cleanedAt: "" });
+  // { count, oldestAgeMs, maxAttempts } — signups saved on the server but not
+  // yet confirmed on the Google Sheet.
+  const [sheetQueue, setSheetQueue] = useState(null);
   // Guest list slide-over: { title, subtitle, guests } or null
   const [audience, setAudience] = useState(null);
 
@@ -160,6 +163,7 @@ export default function AdminDashboard() {
       if (!data.success) throw new Error(data.error || "Could not load data");
       setRows(data.rows);
       setDataSource({ source: data.source || "raw", cleanedAt: data.cleanedAt || "" });
+      setSheetQueue(data.sheetQueue || null);
       setAuthed(true);
     } catch (err) {
       setLoadError(err.message);
@@ -653,6 +657,36 @@ export default function AdminDashboard() {
             {loadError && (
               <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm xl:text-base text-bad">
                 {loadError}
+              </div>
+            )}
+
+            {/* Signups are saved on the server the moment a guest submits, and
+                only cleared once the Google Sheet confirms the row. A non-zero
+                count here means some are still on their way — visible on
+                purpose, because a guarantee nobody can see isn't one. */}
+            {sheetQueue && sheetQueue.count > 0 && (
+              <div
+                className={`mb-4 rounded-lg border px-4 py-3 text-sm xl:text-base ${
+                  sheetQueue.oldestAgeMs > 60 * 60 * 1000
+                    ? "border-red-500/40 bg-red-500/10 text-bad"
+                    : "border-amber-500/40 bg-amber-500/10 text-warn"
+                }`}
+              >
+                <strong>
+                  {sheetQueue.count} signup{sheetQueue.count === 1 ? "" : "s"} not yet on the
+                  sheet
+                </strong>{" "}
+                — saved on the server and retried every 3 minutes, so nothing is lost.
+                {sheetQueue.oldestAgeMs > 60 * 60 * 1000 ? (
+                  <>
+                    {" "}
+                    The oldest has been waiting {Math.round(sheetQueue.oldestAgeMs / 3600000)}h,
+                    which means the Google Sheet connection needs attention — check the Apps
+                    Script deployment.
+                  </>
+                ) : (
+                  <> They should appear within a few minutes.</>
+                )}
               </div>
             )}
 

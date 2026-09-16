@@ -24,6 +24,7 @@ try {
 
 const { getConnectedMacs, getConsoles, getClientInfo } = require("../lib/unifi");
 const { drainInbox, loadState, saveState } = require("../lib/sessions");
+const { flushQueue, queueHealth } = require("../lib/sheet-sync");
 
 const GRACE_MS = parseInt(process.env.SESSION_GRACE_MINUTES || "10", 10) * 60 * 1000;
 const WEBHOOK = process.env.GOOGLE_SHEETS_WEBHOOK_URL || "";
@@ -60,8 +61,50 @@ async function updateSheetRow(session, disconnectedAt, durationLabel, extra = {}
   throw new Error(`Sheets update HTTP ${res.status}`);
 }
 
+/**
+ * Get any unconfirmed signups onto the sheet.
+ *
+ * The web app tries this itself right after each guest connects, but that
+ * attempt only exists while the request's process is alive and only runs when
+ * someone actually connects. This is the part that makes "every signup reaches
+ * the sheet" true: it runs every cycle under pm2 cron whether or not anyone
+ * has used the WiFi, so a queue left over from a restart or a Sheets outage
+ * always drains.
+ */
+async function drainSheetQueue() {
+  const health = queueHealth();
+  if (!health.count) return;
+
+  const ageMin = Math.round(health.oldestAgeMs / 60000);
+  console.log(
+    `[poller] ${health.count} signup(s) not yet confirmed on the sheet ` +
+      `(oldest ${ageMin}m, up to ${health.maxAttempts} attempt(s))`
+  );
+
+  try {
+    // Higher limit than the web path: this is the catch-up pass.
+    const res = await flushQueue({ limit: 100 });
+    console.log(
+      `[poller] sheet sync: ${res.saved} confirmed, ${res.attempted} sent, ` +
+        `${res.stillPending} still pending`
+    );
+    if (res.stillPending > 0 && ageMin > 60) {
+      console.error(
+        `[poller] WARNING: signups have been waiting ${ageMin} minutes. ` +
+          "Check the Apps Script deployment and SHEETS_READ_KEY."
+      );
+    }
+  } catch (err) {
+    console.error("[poller] sheet sync failed:", String(err));
+  }
+}
+
 async function run() {
   const now = Date.now();
+
+  // 0. Never leave a signup unsaved. Runs first and independently of session
+  //    tracking, so a UniFi problem can't also stall the sheet.
+  await drainSheetQueue();
 
   // 1. Merge any new sessions from the web app into tracking state.
   let sessions = loadState();

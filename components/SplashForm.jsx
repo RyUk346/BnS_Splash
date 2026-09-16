@@ -17,31 +17,36 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Poll until the gateway confirms this device is authorized (i.e. the WiFi
- * really is connected), then resolve. Gives up after ~12s and resolves
+ * really is connected), then resolve. Gives up after ~8s and resolves
  * anyway — a guest must never be trapped on the form by a slow API.
  */
-async function waitUntilOnline(mac) {
+async function waitUntilOnline(mac, consoleId = "") {
   if (!mac) {
-    await sleep(800); // no MAC (direct page open) — brief pause, then go
+    await sleep(400); // no MAC (direct page open) — brief pause, then go
     return;
   }
-  const deadline = Date.now() + 12000;
+  // Each check used to search every console, so a "1.2s" poll interval really
+  // meant several seconds per tick. Passing the console makes a check cheap,
+  // so poll faster and cap the wait lower.
+  const deadline = Date.now() + 8000;
+  const params = new URLSearchParams({ mac });
+  if (consoleId) params.set("console", consoleId);
+
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(
-        `${BASE}/api/connection-status?mac=${encodeURIComponent(mac)}`,
-        { cache: "no-store" }
-      );
+      const res = await fetch(`${BASE}/api/connection-status?${params}`, {
+        cache: "no-store",
+      });
       const data = await res.json();
       if (data.authorized === true) return; // network is open — go now
       if (data.authorized === null) break; // can't tell; stop polling
     } catch {
       break; // network/API problem — don't keep the guest waiting
     }
-    await sleep(1200);
+    await sleep(600);
   }
   // Fallback: give the gateway a moment, then proceed regardless.
-  await sleep(800);
+  await sleep(400);
 }
 
 /**
@@ -110,6 +115,8 @@ export default function SplashForm() {
   // We still claim focus explicitly (and re-assert after first paint) so the
   // behaviour is the same everywhere.
   const nameRef = useRef(null);
+  // { email, promise } — the in-flight/settled server email check
+  const emailCheckRef = useRef({ email: "", promise: null });
   useEffect(() => {
     const focusName = () => nameRef.current?.focus({ preventScroll: true });
     focusName();
@@ -137,6 +144,33 @@ export default function SplashForm() {
     setEmailError("");
     // Live typo hint (client-side, instant — never auto-applied).
     setEmailSuggestion(EMAIL_RE.test(normalizeEmail(v)) ? suggestEmail(v) || "" : "");
+  }
+
+  /**
+   * Start the server-side email check (MX lookup + disposable domains) as soon
+   * as the address looks complete, rather than on submit.
+   *
+   * The guest then spends several seconds on phone, birthday and the consent
+   * choice, by which time the answer is already back — so the check costs
+   * nothing at the moment they tap Connect. Keyed by address so an edited
+   * email re-checks.
+   */
+  function prefetchEmailCheck(raw) {
+    const clean = normalizeEmail(raw);
+    if (!EMAIL_RE.test(clean)) return;
+    if (emailCheckRef.current.email === clean) return; // already in flight/done
+    emailCheckRef.current = { email: clean, promise: postEmailCheck(clean) };
+  }
+
+  function postEmailCheck(clean) {
+    return fetch(`${BASE}/api/validate-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: clean }),
+    })
+      .then((r) => r.json())
+      // Unreachable endpoint must never strand a guest — fail open.
+      .catch(() => ({ valid: true }));
   }
 
   function applySuggestion() {
@@ -174,13 +208,11 @@ export default function SplashForm() {
     const cleanEmail = normalizeEmail(email);
 
     // Step 1: deeper email validation (MX + disposable) on the server.
+    // Usually already answered — it was started when they left the field.
     try {
-      const vr = await fetch(`${BASE}/api/validate-email`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: cleanEmail }),
-      });
-      const vd = await vr.json();
+      const cached =
+        emailCheckRef.current.email === cleanEmail ? emailCheckRef.current.promise : null;
+      const vd = await (cached || postEmailCheck(cleanEmail));
       if (!vd.valid) {
         setStatus("idle");
         setEmailError(vd.message || "Please enter a valid email address.");
@@ -219,7 +251,9 @@ export default function SplashForm() {
       // (We ignore the "original URL" UniFi passes — on iOS/Android it's just
       // the OS connectivity probe, e.g. captive.apple.com.)
       const dest = process.env.NEXT_PUBLIC_REDIRECT_URL || "https://burgerandsauce.com";
-      await waitUntilOnline(mac);
+      // data.consoleId scopes the status check to the one console that just
+      // authorized this device, instead of searching all of them per poll.
+      await waitUntilOnline(mac, data.consoleId || "");
       window.location.href = dest;
     } catch (err) {
       setStatus("error");
@@ -293,7 +327,11 @@ export default function SplashForm() {
                       placeholder="you@example.com"
                       value={email}
                       onChange={handleEmailChange}
-                      onBlur={() => setTouched((s) => ({ ...s, email: true }))}
+                      onBlur={(e) => {
+                        setTouched((s) => ({ ...s, email: true }));
+                        // Get the MX check moving while they fill the rest in.
+                        prefetchEmailCheck(e.target.value);
+                      }}
                       className={`${INPUT} ${
                         (touched.email && !emailValid) || emailError ? "border-red-500" : "border-gray-300"
                       }`}

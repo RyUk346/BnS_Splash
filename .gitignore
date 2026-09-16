@@ -6,6 +6,8 @@ out/
 npm-debug.log*
 .DS_Store
 
-# Session poller runtime state (leading slash = repo root ONLY, so it
-# doesn't also ignore app/api/admin/data/)
+# Runtime state (leading slash = repo root ONLY, so it doesn't also ignore
+# app/api/admin/data/). Holds the session store, the store registry, the AP
+# routing table, and pending-sheet.json — which contains guest PII, so it
+# must never be committed.
 /data/

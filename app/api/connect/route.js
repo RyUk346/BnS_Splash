@@ -1,35 +1,14 @@
 import { NextResponse } from "next/server";
-import { authorizeGuest } from "@/lib/unifi";
+import { authorizeGuest, getClientDetails } from "@/lib/unifi";
 import { EMAIL_RE, normalizeEmail } from "@/lib/email";
 import { recordSession } from "@/lib/sessions";
+import { enqueue } from "@/lib/pending-sheet";
+import { flushQueue, appendRow } from "@/lib/sheet-sync";
+import { nextRowKey } from "@/lib/row-key";
 
 export const dynamic = "force-dynamic";
 
 const MAC_RE = /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/i;
-
-async function saveToGoogleSheet(entry) {
-  const webhook = process.env.GOOGLE_SHEETS_WEBHOOK_URL;
-  if (!webhook) {
-    console.warn("GOOGLE_SHEETS_WEBHOOK_URL not set — skipping sheet logging");
-    return false;
-  }
-  // Apps Script runs doPost (appending the row) and THEN answers with a 302
-  // pointing at script.googleusercontent.com for the JSON reply. Following
-  // that hop often fails with a Google "Page not found" page even though the
-  // row was written — which used to surface as a bogus "HTTP 404" error.
-  // So: don't follow the redirect. Reaching the 302 means the script ran.
-  const res = await fetch(webhook, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(entry),
-    redirect: "manual",
-  });
-
-  // 2xx = direct reply, 3xx = script ran and is redirecting to its output.
-  if (res.status >= 200 && res.status < 400) return true;
-
-  throw new Error(`Sheets webhook returned HTTP ${res.status}`);
-}
 
 export async function POST(req) {
   let body;
@@ -77,9 +56,12 @@ export async function POST(req) {
     );
   }
 
-  // Shared timestamp — written to the Sheet AND used as the row key so the
-  // poller can find this exact row later to fill in disconnect + duration.
-  const timestamp = new Date().toISOString();
+  // Shared timestamp — written to the Sheet AND used as the row key, so the
+  // poller can find this exact row later, and so the delivery queue can
+  // confirm the row landed. nextRowKey (not Date.now) because two guests
+  // submitting in the same millisecond would otherwise share a key, and the
+  // read-back would mark the second one delivered off the first one's row.
+  const timestamp = nextRowKey();
 
   // 1. Authorize the guest on UniFi first — this also tells us which
   //    branch (console) the device is connected to.
@@ -87,15 +69,15 @@ export async function POST(req) {
   let authError = null;
   let branch = "";
   let consoleId = "";
-  let deviceName = "";
-  let vendor = "";
+  let vendor = ""; // cheap MAC-derived guess; the background task refines it
   if (MAC_RE.test(mac)) {
     try {
-      const result = await authorizeGuest(mac);
+      // `ap` lets UniFi's own access-point ID pick the console directly
+      // instead of us searching every store for the device.
+      const result = await authorizeGuest(mac, { apMac: ap });
       authorized = true;
       branch = result.branch || "";
       consoleId = result.consoleId || "";
-      deviceName = result.deviceName || "";
       vendor = result.vendor || "";
     } catch (err) {
       authError = err;
@@ -107,26 +89,25 @@ export async function POST(req) {
     console.warn("No client MAC in request — skipping UniFi authorization");
   }
 
-  // 2. Save to Google Sheets (non-fatal if it fails — don't strand the guest)
-  let savedToSheet = false;
-  try {
-    savedToSheet = await saveToGoogleSheet({
-      timestamp,
-      email,
-      firstName,
-      phone,
-      birthday,
-      promo,
-      mac,
-      ap,
-      ssid,
-      branch,
-      deviceName,
-      vendor,
-    });
-  } catch (err) {
-    console.error("Google Sheets logging failed:", err.message);
-  }
+  // 2. Persist the signup to disk BEFORE responding.
+  //
+  //    This is the durability point, and it has to come before the 502 below:
+  //    a UniFi outage is exactly when a guest retries repeatedly, and losing
+  //    their details every time would be the worst possible moment to do it.
+  //    The write is local and synchronous — microseconds, not the 1-3s Apps
+  //    Script cold start it replaces on the critical path.
+  const queueId = enqueueSignup({
+    timestamp,
+    email,
+    firstName,
+    phone,
+    birthday,
+    promo,
+    mac,
+    ap,
+    ssid,
+    branch,
+  });
 
   // 3. Register the session so the poller can track connection duration.
   //    Keyed by timestamp + mac, which uniquely identifies the Sheet row.
@@ -146,16 +127,119 @@ export async function POST(req) {
     }
   }
 
+  // 4. Send the guest on their way. Everything still outstanding — the two
+  //    UniFi calls for device details and the Apps Script append — happens
+  //    after this point, so the guest never waits on either. The queue entry
+  //    above is what makes that safe: it is only cleared once a read-back
+  //    confirms the row is on the sheet, and the poller retries the rest.
+  if (queueId) {
+    pushToSheet(timestamp, { consoleId, mac, vendor });
+  } else {
+    // Queueing failed, so there is no durable copy to retry from. Write it
+    // now, before responding, rather than lose it.
+    await appendInline({
+      timestamp, email, firstName, phone, birthday, promo,
+      mac, ap, ssid, branch, deviceName: "", vendor,
+    });
+  }
+
   if (authError) {
     return NextResponse.json(
       {
         success: false,
-        savedToSheet,
         error: "Could not activate your WiFi access. Please try again.",
       },
       { status: 502 }
     );
   }
 
-  return NextResponse.json({ success: true, authorized, savedToSheet, branch });
+  return NextResponse.json({
+    success: true,
+    authorized,
+    branch,
+    // Lets the splash page poll only this console instead of all of them.
+    consoleId,
+  });
 }
+
+function enqueueSignup(entry) {
+  try {
+    return enqueue(entry);
+  } catch (err) {
+    // The queue is what makes delivery guaranteed, so failing to write it is
+    // the one case that could still lose a signup. Realistically this means a
+    // full disk or wrong permissions on data/ — neither of which stops the
+    // Sheet itself working. So rather than drop the lead, fall back to writing
+    // the row inline: slower for this one guest, but saved.
+    console.error("CRITICAL: could not queue signup for Sheets:", String(err));
+    return "";
+  }
+}
+
+/**
+ * Last-resort direct append, used only when queueing failed.
+ *
+ * Awaited before responding, so this guest waits for Apps Script — the thing
+ * every other path avoids. That trade is deliberate: a few seconds of delay
+ * beats losing their details, and it only happens when data/ is unwritable.
+ */
+async function appendInline(entry) {
+  try {
+    await appendRow(entry);
+    console.error("Signup written directly (queue unavailable) — fix data/ permissions");
+  } catch (err) {
+    console.error("CRITICAL: signup could not be saved at all:", String(err), JSON.stringify({
+      // Enough to recover the row by hand from the logs. Logs are already
+      // considered sensitive for this app; the Sheet holds the same fields.
+      timestamp: entry.timestamp,
+      email: entry.email,
+      firstName: entry.firstName,
+      phone: entry.phone,
+      birthday: entry.birthday,
+      promo: entry.promo,
+      branch: entry.branch,
+      mac: entry.mac,
+    }));
+  }
+}
+
+/**
+ * Look up the device details, then try to get this signup onto the sheet —
+ * all after the response has gone out, so the guest never waits for it.
+ *
+ * Deliberately not awaited: this runs on a long-lived Node server under pm2
+ * (fork mode), so the promise survives the response. It is NOT safe on a
+ * freeze-after-response platform like Vercel. That's also why the poller runs
+ * the same flush on a schedule — this call is an optimisation to get the row
+ * in within seconds, not the thing that guarantees it lands.
+ */
+function pushToSheet(timestamp, { consoleId, mac, vendor }) {
+  (async () => {
+    const enrich = {};
+    if (consoleId && MAC_RE.test(mac)) {
+      try {
+        const details = await getClientDetails(consoleId, mac);
+        enrich[timestamp] = {
+          deviceName: details.deviceName || "",
+          vendor: details.vendor || vendor || "",
+        };
+      } catch (err) {
+        console.error("Device detail lookup failed:", String(err));
+      }
+    }
+    // Flushes this signup and sweeps up anything still outstanding.
+    await flushQueue({ limit: 25, enrich });
+  })().catch((err) => {
+    // String(err), not err.message: a rejection with a non-object would throw
+    // inside this handler, and an unhandled rejection takes the worker down.
+    console.error("Background Sheets push crashed:", String(err));
+  });
+}
+
+/* Retries are NOT run from here.
+ *
+ * An in-process timer in a route module only starts once that route is first
+ * requested, so a queue left over from before a restart would sit untouched
+ * until the next guest connected — overnight, that's hours. The session
+ * poller runs every 3 minutes under pm2 cron regardless of traffic, so it
+ * owns the retry sweep (see scripts/session-poller.js). */
