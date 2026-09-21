@@ -5,6 +5,7 @@ import { recordSession } from "@/lib/sessions";
 import { enqueue } from "@/lib/pending-sheet";
 import { flushQueue, appendRow } from "@/lib/sheet-sync";
 import { nextRowKey } from "@/lib/row-key";
+import { startTimer } from "@/lib/timing";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +71,9 @@ export async function POST(req) {
   let branch = "";
   let consoleId = "";
   let vendor = ""; // cheap MAC-derived guess; the background task refines it
+  const t = startTimer("connect");
+  let authTiming = null;
+
   if (MAC_RE.test(mac)) {
     try {
       // `ap` lets UniFi's own access-point ID pick the console directly
@@ -79,6 +83,7 @@ export async function POST(req) {
       branch = result.branch || "";
       consoleId = result.consoleId || "";
       vendor = result.vendor || "";
+      authTiming = result.timing || null;
     } catch (err) {
       authError = err;
       console.error("UniFi authorization failed:", err.message);
@@ -142,6 +147,19 @@ export async function POST(req) {
       mac, ap, ssid, branch, deviceName: "", vendor,
     });
   }
+
+  // One grep-able line per connect: `pm2 logs hyperglow-splash | grep timing`.
+  // This is what tells us where a slow connect actually went, rather than
+  // reasoning about it from the code.
+  t.done({
+    ok: authorized,
+    find: authTiming ? `${authTiming.findMs}ms` : "",
+    auth: authTiming ? `${authTiming.authMs}ms` : "",
+    waited: authTiming ? `${authTiming.waitedMs}ms` : "",
+    tries: authTiming ? authTiming.attempts : "",
+    hinted: authTiming ? authTiming.hinted : "",
+    branch,
+  });
 
   if (authError) {
     return NextResponse.json(

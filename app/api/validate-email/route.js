@@ -20,7 +20,11 @@ const STATUS_NXDOMAIN = 3; // domain does not exist
 // Per-domain cache so repeat domains (gmail.com, etc.) don't re-query.
 const mxCache = new Map(); // domain -> { hasMx, expires }
 const MX_TTL_MS = 60 * 60 * 1000; // 1 hour
-const MX_TIMEOUT_MS = 4000;
+// Two endpoints are tried in order, so this is the ceiling twice over. Kept
+// short because in the worst case (a guest who submits before the prefetched
+// check has answered) it lands on the critical path — and an unresolvable
+// domain fails open anyway, so waiting longer buys nothing.
+const MX_TIMEOUT_MS = 2500;
 
 function withTimeout(promise, ms) {
   return Promise.race([

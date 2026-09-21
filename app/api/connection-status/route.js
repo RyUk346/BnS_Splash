@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isGuestAuthorized } from "@/lib/unifi";
+import { startTimer } from "@/lib/timing";
 
 export const dynamic = "force-dynamic";
 
@@ -32,10 +33,15 @@ export async function GET(req) {
     return NextResponse.json({ authorized: null, error: "bad mac" }, { status: 400 });
   }
 
+  // Timed because this runs repeatedly while the guest waits, so it's a prime
+  // suspect whenever a connect feels slow.
+  const t = startTimer("status");
   try {
     const authorized = await isGuestAuthorized(mac.toLowerCase(), consoleId);
+    t.done({ authorized, scoped: !!consoleId });
     return NextResponse.json({ authorized });
   } catch (err) {
+    t.done({ error: err.message });
     console.error("connection-status check failed:", err.message);
     return NextResponse.json({ authorized: null });
   }

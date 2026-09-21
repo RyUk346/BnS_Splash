@@ -16,19 +16,27 @@ const INPUT =
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Poll until the gateway confirms this device is authorized (i.e. the WiFi
- * really is connected), then resolve. Gives up after ~8s and resolves
- * anyway — a guest must never be trapped on the form by a slow API.
+ * Give the gateway the briefest chance to confirm the device is authorized,
+ * then redirect regardless.
+ *
+ * This used to wait up to 8.4 seconds. That was the single biggest remaining
+ * delay in the flow, and it was almost entirely wasted: by the time this runs,
+ * /api/connect has already had UniFi accept AUTHORIZE_GUEST_ACCESS. The poll
+ * only watched for that decision to show up in UniFi's client record, which
+ * is a reporting lag, not the network actually opening.
+ *
+ * So the check is now an optimisation, not a gate: one immediate look, one
+ * quick retry, then go. A guest whose WiFi happens to open a beat after the
+ * redirect gets a page that loads a fraction later — far better than everyone
+ * staring at a button for several seconds.
  */
+const ONLINE_CHECK_BUDGET_MS = 1200;
+const ONLINE_CHECK_INTERVAL_MS = 300;
+
 async function waitUntilOnline(mac, consoleId = "") {
-  if (!mac) {
-    await sleep(400); // no MAC (direct page open) — brief pause, then go
-    return;
-  }
-  // Each check used to search every console, so a "1.2s" poll interval really
-  // meant several seconds per tick. Passing the console makes a check cheap,
-  // so poll faster and cap the wait lower.
-  const deadline = Date.now() + 8000;
+  if (!mac) return; // no MAC (direct page open) — nothing to check, just go
+
+  const deadline = Date.now() + ONLINE_CHECK_BUDGET_MS;
   const params = new URLSearchParams({ mac });
   if (consoleId) params.set("console", consoleId);
 
@@ -38,15 +46,15 @@ async function waitUntilOnline(mac, consoleId = "") {
         cache: "no-store",
       });
       const data = await res.json();
-      if (data.authorized === true) return; // network is open — go now
-      if (data.authorized === null) break; // can't tell; stop polling
+      if (data.authorized === true) return; // confirmed open — go now
+      if (data.authorized === null) return; // can't tell; don't wait around
     } catch {
-      break; // network/API problem — don't keep the guest waiting
+      return; // network/API problem — never hold the guest for this
     }
-    await sleep(600);
+    if (Date.now() + ONLINE_CHECK_INTERVAL_MS >= deadline) break;
+    await sleep(ONLINE_CHECK_INTERVAL_MS);
   }
-  // Fallback: give the gateway a moment, then proceed regardless.
-  await sleep(400);
+  // Budget spent. The authorization was already accepted by UniFi, so go.
 }
 
 /**
