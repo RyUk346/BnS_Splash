@@ -9,8 +9,12 @@ On the VPS:
 
 ```bash
 # Last 30 connections, newest at the bottom
-pm2 logs hyperglow-splash --lines 400 --nostream | grep "timing connect" | tail -30
+pm2 logs hyperglow-splash --lines 400 --nostream | grep "connect total=" | tail -30
 ```
+
+Match on `connect total=`, not `"timing connect"` — pm2 prefixes each line and
+the text is `[timing] connect`, so the bracket sits between the two words and
+a `timing connect` pattern silently matches nothing.
 
 Each line looks like:
 
@@ -30,7 +34,7 @@ Each line looks like:
 And for the post-connect check:
 
 ```bash
-pm2 logs hyperglow-splash --lines 400 --nostream | grep "timing status" | tail -20
+pm2 logs hyperglow-splash --lines 400 --nostream | grep "status total=" | tail -20
 ```
 
 ```
@@ -45,9 +49,12 @@ pm2 logs hyperglow-splash --lines 400 --nostream | grep "timing status" | tail -
 
 ```bash
 # Median auth time across recent connections
-pm2 logs hyperglow-splash --lines 600 --nostream | grep -o "auth=[0-9]*" |
-  cut -d= -f2 | sort -n | awk '{a[NR]=$1} END {print "median auth RTT:", a[int(NR/2)] "ms"}'
+pm2 logs hyperglow-splash --lines 600 --nostream | grep -o 'auth="[0-9]*' |
+  grep -o '[0-9]*' | sort -n | awk '{a[NR]=$1} END {print "median auth RTT:", a[int(NR/2)] "ms"}'
 ```
+
+**Measured on 21 Sep 2026: 465ms.** That's the floor for anything that needs
+a UniFi call, and every stage below is a multiple of it.
 
 Everything scales with this number. Under ~400ms, connections should feel
 instant. Over ~1.5s and the cloud path itself is the bottleneck — at that
