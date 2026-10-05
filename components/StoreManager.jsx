@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH || "";
 
@@ -65,7 +65,51 @@ export default function StoreManager() {
 
   useEffect(() => {
     loadStores();
+    // Fetch the live console list straight away, not just when adding a
+    // store: it's what lets the table show each console's own UniFi name.
+    // Deliberately not awaited — it goes out to api.ui.com, and the table
+    // (read from a local file) should render immediately regardless.
+    discover();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /** consoleId -> what UniFi currently calls it. */
+  const liveNames = useMemo(() => {
+    const map = new Map();
+    for (const c of consoles || []) if (c.name) map.set(c.id, c.name);
+    return map;
+  }, [consoles]);
+
+  /**
+   * Save any console name we've learned that isn't on file yet.
+   *
+   * Covers stores added before the field existed, and routers renamed in
+   * UniFi since. Fire-and-forget: the name is already on screen either way.
+   */
+  useEffect(() => {
+    if (!consoles || !stores.length) return;
+    const stale = stores.filter((s) => {
+      const live = liveNames.get(s.id);
+      return live && live !== s.consoleName;
+    });
+    if (!stale.length) return;
+
+    (async () => {
+      for (const s of stale) {
+        try {
+          await fetch(`${BASE}/api/admin/stores`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: s.id, consoleName: liveNames.get(s.id) }),
+          });
+        } catch {
+          /* cosmetic — the live name is displayed from `consoles` anyway */
+        }
+      }
+      loadStores();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [consoles, stores.length]);
 
   function flash(msg) {
     setNotice(msg);
@@ -104,7 +148,12 @@ export default function StoreManager() {
       const res = await fetch(`${BASE}/api/admin/stores`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, label: newLabel.trim() }),
+        body: JSON.stringify({
+          id,
+          label: newLabel.trim(),
+          // Already in hand from the picker, so no extra UniFi call to get it.
+          consoleName: liveNames.get(id) || "",
+        }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Could not add store");
@@ -296,6 +345,14 @@ export default function StoreManager() {
               />
               <p className="mt-1 text-[11px] text-ink/40">
                 Shown in the Google Sheet&apos;s Branch column and in this sidebar.
+                {liveNames.get(pickedId) && (
+                  <>
+                    {" "}
+                    This is your name for the branch — the console calls itself{" "}
+                    <span className="font-medium text-ink/60">{liveNames.get(pickedId)}</span> in
+                    UniFi.
+                  </>
+                )}
               </p>
 
               <button
@@ -323,7 +380,7 @@ export default function StoreManager() {
             <thead className="bg-ink/5 text-xs xl:text-sm uppercase tracking-wide text-ink/50">
               <tr>
                 <th className="px-4 py-3">Store</th>
-                <th className="px-4 py-3">Console ID</th>
+                <th className="px-4 py-3">UniFi console</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
@@ -351,10 +408,48 @@ export default function StoreManager() {
                       <span className="font-semibold text-ink">{s.label}</span>
                     )}
                   </td>
+                  {/* The name UniFi itself shows (e.g. BNS-BH-BW-GW1). Without
+                      it there's no way to tell which physical router a row is,
+                      because the UniFi dashboard never shows the console ID. */}
                   <td className="px-4 py-3">
-                    <span className="font-mono text-[11px] text-ink/40" title={s.id}>
-                      {s.id.slice(0, 14)}…{s.id.slice(-10)}
-                    </span>
+                    {(() => {
+                      const live = liveNames.get(s.id);
+                      const name = live || s.consoleName;
+                      if (!name) {
+                        return (
+                          <>
+                            <span className="text-ink/40">
+                              {consoles === null ? "Loading…" : "Name unavailable"}
+                            </span>
+                            <span
+                              className="mt-0.5 block font-mono text-[11px] text-ink/30"
+                              title={s.id}
+                            >
+                              {s.id.slice(0, 14)}…{s.id.slice(-10)}
+                            </span>
+                          </>
+                        );
+                      }
+                      return (
+                        <>
+                          <span className="font-medium text-ink/80">{name}</span>
+                          {live && s.consoleName && live !== s.consoleName && (
+                            <span
+                              className="ml-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-warn"
+                              title={`Renamed in UniFi — was "${s.consoleName}"`}
+                            >
+                              renamed
+                            </span>
+                          )}
+                          <span
+                            className="mt-0.5 block font-mono text-[11px] text-ink/30"
+                            title={s.id}
+                          >
+                            {s.id.slice(0, 14)}…{s.id.slice(-10)}
+                          </span>
+                        </>
+                      );
+                    })()}
                   </td>
                   <td className="px-4 py-3">
                     {tests[s.id] ? (
