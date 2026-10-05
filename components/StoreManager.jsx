@@ -42,6 +42,8 @@ export default function StoreManager() {
   const [newLabel, setNewLabel] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const [storeSearch, setStoreSearch] = useState("");
+
   // Per-store UI state
   const [tests, setTests] = useState({}); // id -> {tone,text}
   const [editing, setEditing] = useState(null); // id being renamed
@@ -231,6 +233,24 @@ export default function StoreManager() {
 
   const available = (consoles || []).filter((c) => !c.added);
 
+  /**
+   * Filter the list by branch name or UniFi console name.
+   *
+   * Matches the live console name as well as the stored one, so searching for
+   * a router by what UniFi calls it today works even if it was renamed since
+   * it was added. The console ID is matched too — handy when you have an ID
+   * in front of you and want to know which store it is.
+   */
+  const visibleStores = useMemo(() => {
+    const q = storeSearch.trim().toLowerCase();
+    if (!q) return stores;
+    return stores.filter((s) =>
+      [s.label, s.consoleName, liveNames.get(s.id), s.id].some((v) =>
+        String(v || "").toLowerCase().includes(q)
+      )
+    );
+  }, [stores, storeSearch, liveNames]);
+
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -373,6 +393,37 @@ export default function StoreManager() {
         </div>
       )}
 
+      {/* Search. Appears once the list is long enough to be worth scanning —
+          below that it's just a box in the way. */}
+      {stores.length > 5 && (
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <div className="relative min-w-[240px] flex-1 sm:max-w-sm">
+            <input
+              type="text"
+              value={storeSearch}
+              onChange={(e) => setStoreSearch(e.target.value)}
+              placeholder="Search by store or console name…"
+              aria-label="Search stores"
+              className={`${input} pr-8`}
+            />
+            {storeSearch && (
+              <button
+                onClick={() => setStoreSearch("")}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1 text-ink/40 transition hover:text-ink"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          {storeSearch && (
+            <span className="text-xs xl:text-sm text-ink/50">
+              {visibleStores.length} of {stores.length}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Store list */}
       <div className="overflow-hidden rounded-xl border border-ink/10 bg-ink/5">
         <div className="overflow-x-auto">
@@ -386,7 +437,7 @@ export default function StoreManager() {
               </tr>
             </thead>
             <tbody className="divide-y divide-ink/5">
-              {stores.map((s) => (
+              {visibleStores.map((s) => (
                 <tr key={s.id} className="hover:bg-ink/5">
                   <td className="px-4 py-3">
                     {editing === s.id ? (
@@ -482,10 +533,22 @@ export default function StoreManager() {
                   </td>
                 </tr>
               ))}
-              {!stores.length && !loading && (
+              {!visibleStores.length && !loading && (
                 <tr>
                   <td colSpan={4} className="px-4 py-10 text-center text-ink/40">
-                    No stores configured yet.
+                    {stores.length ? (
+                      <>
+                        No store matches &ldquo;{storeSearch}&rdquo;.{" "}
+                        <button
+                          onClick={() => setStoreSearch("")}
+                          className="underline hover:text-ink"
+                        >
+                          Clear search
+                        </button>
+                      </>
+                    ) : (
+                      "No stores configured yet."
+                    )}
                   </td>
                 </tr>
               )}
