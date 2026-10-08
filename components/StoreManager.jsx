@@ -301,7 +301,7 @@ export default function StoreManager() {
           <div className="grid gap-4 lg:grid-cols-2">
             <div>
               <label className="mb-1 block text-xs xl:text-sm text-ink/50">
-                UniFi console
+                UniFi console <span className="text-bad">*</span>
                 {discovering && <span className="ml-2 text-warn">discovering…</span>}
               </label>
 
@@ -355,7 +355,9 @@ export default function StoreManager() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs xl:text-sm text-ink/50">Store name</label>
+              <label className="mb-1 block text-xs xl:text-sm text-ink/50">
+                Store name <span className="text-bad">*</span>
+              </label>
               <input
                 type="text"
                 value={newLabel}
@@ -375,13 +377,21 @@ export default function StoreManager() {
                 )}
               </p>
 
+              {/* Store name is now genuinely required, not just marked as
+                  such. Without it the store fell back to a truncated console
+                  ID, and that string is what lands in the Sheet's Branch
+                  column — which every per-store figure in the dashboard is
+                  grouped by. An unnamed store makes its own data unreadable. */}
               <button
                 onClick={save}
-                disabled={saving || !(pickedId || manualId.trim())}
+                disabled={saving || !(pickedId || manualId.trim()) || !newLabel.trim()}
                 className={`${btnPrimary} mt-4`}
               >
                 {saving ? "Adding…" : "Add store"}
               </button>
+              <p className="mt-3 text-[11px] text-ink/40">
+                <span className="text-bad">*</span> required
+              </p>
             </div>
           </div>
 

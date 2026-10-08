@@ -57,6 +57,19 @@ async function waitUntilOnline(mac, consoleId = "") {
   // Budget spent. The authorization was already accepted by UniFi, so go.
 }
 
+// Pause before the one automatic retry. Long enough for UniFi to have listed
+// a just-joined device, short enough not to feel like a hang.
+const RETRY_PAUSE_MS = 700;
+
+// How long to say nothing before reassuring the guest.
+//
+// Deliberately NOT a countdown: connect times range from under a second to
+// well over ten, so any number we displayed would be a promise we couldn't
+// keep, and a counter that hits zero while still spinning is worse than no
+// counter at all. Most connects finish inside this window and the guest sees
+// nothing extra; past it, they get a message that explains without promising.
+const SLOW_NOTICE_MS = 3000;
+
 /**
  * Reduce anything a guest types or pastes to plain UK digits.
  * Spaces, brackets and dashes go; a pasted "+44 7123 456789" or
@@ -112,6 +125,8 @@ export default function SplashForm() {
   const [promo, setPromo] = useState(""); // "Yes" | "No" — no preselection (consent must be a choice)
   const [touched, setTouched] = useState({});
   const [status, setStatus] = useState("idle"); // idle | submitting | success | error
+  // Shown only once a connect has run long enough to be worth explaining.
+  const [slowNotice, setSlowNotice] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [emailSuggestion, setEmailSuggestion] = useState(""); // "did you mean …"
   const [emailError, setEmailError] = useState(""); // server-side reject message
@@ -122,6 +137,17 @@ export default function SplashForm() {
   // field on the form, so their choice and ours agree — no fighting over it.
   // We still claim focus explicitly (and re-assert after first paint) so the
   // behaviour is the same everywhere.
+  // Arm the "still connecting" message while a submit is in flight, and make
+  // sure it never outlives the attempt that started it.
+  useEffect(() => {
+    if (status !== "submitting") {
+      setSlowNotice(false);
+      return;
+    }
+    const t = setTimeout(() => setSlowNotice(true), SLOW_NOTICE_MS);
+    return () => clearTimeout(t);
+  }, [status]);
+
   const nameRef = useRef(null);
   // { email, promise } — the in-flight/settled server email check
   const emailCheckRef = useRef({ email: "", promise: null });
@@ -212,6 +238,7 @@ export default function SplashForm() {
     setStatus("submitting");
     setErrorMsg("");
     setEmailError("");
+    setSlowNotice(false);
 
     const cleanEmail = normalizeEmail(email);
 
@@ -231,24 +258,46 @@ export default function SplashForm() {
       // Validation endpoint unreachable → fail open, don't strand the guest.
     }
 
-    // Step 2: existing connect + Sheets flow.
-    try {
+    // Step 2: authorize, with one silent retry.
+    //
+    // Around one connect in six was failing outright, and the commonest cause
+    // is UniFi not having listed the just-joined device yet — which a second
+    // attempt a moment later usually clears. Retrying here turns most of those
+    // error screens into a slightly slow success, which is a far better guest
+    // experience than asking them to tap Connect again themselves.
+    const payload = {
+      email: cleanEmail,
+      firstName: firstName.trim(),
+      phone: phone.trim(),
+      birthday: birthday.trim(),
+      promo,
+      mac,
+      ap,
+      ssid,
+    };
+
+    const attempt = async (retryOf) => {
       const res = await fetch(`${BASE}/api/connect`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: cleanEmail,
-          firstName: firstName.trim(),
-          phone: phone.trim(),
-          birthday: birthday.trim(),
-          promo,
-          mac,
-          ap,
-          ssid,
-        }),
+        body: JSON.stringify(retryOf ? { ...payload, retryOf } : payload),
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
+      const data = await res.json().catch(() => ({}));
+      return { ok: res.ok && data.success, data };
+    };
+
+    try {
+      let { ok, data } = await attempt();
+
+      if (!ok) {
+        // `retryOf` reuses the row key from the first attempt, so the guest
+        // gets one Sheet row rather than two. Their details were already
+        // saved server-side before the failure, so nothing is riding on this.
+        await sleep(RETRY_PAUSE_MS);
+        ({ ok, data } = await attempt(data.timestamp));
+      }
+
+      if (!ok) {
         throw new Error(data.error || "Something went wrong. Please try again.");
       }
 
@@ -467,6 +516,14 @@ export default function SplashForm() {
                     </div>
                   )}
 
+                  {/* The asterisks on Name, Email and Promotional Offers were
+                      unexplained — fine for anyone who knows the convention,
+                      not for everyone. Sits above the button, where someone
+                      who can't press it will look. */}
+                  <p className="text-xs text-bnsgrey">
+                    <span aria-hidden="true">*</span> Required
+                  </p>
+
                   <button
                     type="submit"
                     disabled={!canSubmit}
@@ -474,6 +531,25 @@ export default function SplashForm() {
                   >
                     {status === "submitting" ? "Connecting…" : "Connect to WiFi"}
                   </button>
+
+                  {/* Only after SLOW_NOTICE_MS, so the guests who connect in a
+                      second or two never see it. No number and no progress
+                      bar on purpose — we can't predict how long this takes,
+                      and a promise we break is worse than no promise. */}
+                  {status === "submitting" && slowNotice && (
+                    <p
+                      role="status"
+                      aria-live="polite"
+                      className="flex items-center justify-center gap-2 text-center text-xs text-bnsgrey"
+                    >
+                      <span
+                        aria-hidden
+                        className="inline-block h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-bnsgrey border-t-transparent"
+                      />
+                      Still connecting — this can take a few seconds the first
+                      time on this network.
+                    </p>
+                  )}
                 </form>
 
                 <p className="mt-5 text-center text-xs text-gray-700">

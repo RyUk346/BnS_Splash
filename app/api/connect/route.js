@@ -62,7 +62,18 @@ export async function POST(req) {
   // confirm the row landed. nextRowKey (not Date.now) because two guests
   // submitting in the same millisecond would otherwise share a key, and the
   // read-back would mark the second one delivered off the first one's row.
-  const timestamp = nextRowKey();
+  //
+  // `retryOf` lets the splash page re-attempt a failed connect under the
+  // ORIGINAL key. Without it a retry would be a fresh key and the guest would
+  // get two Sheet rows — the queue dedupes on timestamp+mac, and so does the
+  // Apps Script append, so reusing the key makes the retry free of duplicates
+  // at every layer. Shape-checked and age-capped because it comes from the
+  // client; a bogus value would only ever affect this guest's own row.
+  const retryOf = String(body.retryOf || "");
+  const retryOk =
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(retryOf) &&
+    Math.abs(Date.now() - Date.parse(retryOf)) < 10 * 60 * 1000;
+  const timestamp = retryOk ? retryOf : nextRowKey();
 
   // 1. Authorize the guest on UniFi first — this also tells us which
   //    branch (console) the device is connected to.
@@ -166,6 +177,9 @@ export async function POST(req) {
       {
         success: false,
         error: "Could not activate your WiFi access. Please try again.",
+        // Handed back so a retry reuses this row key instead of creating a
+        // second Sheet row for the same guest.
+        timestamp,
       },
       { status: 502 }
     );
@@ -177,6 +191,7 @@ export async function POST(req) {
     branch,
     // Lets the splash page poll only this console instead of all of them.
     consoleId,
+    timestamp,
   });
 }
 
